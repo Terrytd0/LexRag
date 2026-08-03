@@ -202,3 +202,18 @@ day populates it — check those before assuming a module is dead code.
 - Every retrieval improvement should be measurable.
 - Every generation improvement should improve evaluation metrics.
 - Don't increase architectural complexity unless it improves measurable retrieval or generation quality.
+
+## Version Control
+
+- **Never run `git commit` or `git push` unless explicitly instructed in
+  that same turn.** Making local edits, running tests, or fixing a bug does
+  not imply permission to commit it — wait to be asked.
+- "Explicit" means an instruction to commit/push, not agreement with an
+  unrelated question. A "yes" answering "should I use approach A or B?"
+  is not authorization to also commit. When genuinely ambiguous, ask
+  rather than assume.
+- A request to commit does not carry forward to later changes in the same
+  session. Each round of edits needs its own explicit go-ahead.
+- This applies even when a task (e.g. a sprint-day deliverable) describes
+  a commit as one of its steps — confirm before running it rather than
+  treating the task description as standing authorization.

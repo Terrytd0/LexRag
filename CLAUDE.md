@@ -193,3 +193,12 @@ day populates it — check those before assuming a module is dead code.
   name) don't need this ceremony — use judgment about what's
   "architectural": does it affect another module's interface, a stored
   data shape, or a documented requirement/acceptance criterion?
+
+## AI Engineering Principles
+
+- Performance before cleverness.
+- Measure before optimizing.
+- Prefer explicit pipelines over hidden framework magic.
+- Every retrieval improvement should be measurable.
+- Every generation improvement should improve evaluation metrics.
+- Don't increase architectural complexity unless it improves measurable retrieval or generation quality.

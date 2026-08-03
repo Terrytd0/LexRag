@@ -6,6 +6,8 @@ evaluation harness.
 - `raw/` -- uploaded source PDFs as received. Gitignored; populate locally or
   via `scripts/seed_corpus.py` (Day 2). A small sample contract corpus
   (5-10 documents) lives here during development.
+  - `raw/sample_contracts/` -- where `scripts/seed_corpus.py` looks for PDFs to
+    ingest; see `raw/sample_contracts/README.md` for what to put there.
 - `processed/` -- intermediate ingestion artifacts (extracted text, chunk
   manifests) useful for debugging the pipeline without re-parsing PDFs.
   Gitignored.

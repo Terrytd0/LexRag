@@ -83,4 +83,4 @@ disallow_untyped_defs = true
 explicit_package_bases = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["api", "configs", "evaluation", "generation", "ingestion", "retrieval"]
+packages = ["api", "configs", "domain", "evaluation", "generation", "ingestion", "retrieval"]

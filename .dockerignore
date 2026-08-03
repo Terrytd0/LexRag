@@ -1,0 +1,13 @@
+.venv
+.git
+.github
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.deepeval
+__pycache__
+*.pyc
+data/raw
+data/processed
+evaluation/reports
+.env

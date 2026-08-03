@@ -26,7 +26,7 @@ test: ## Run the unit test suite
 	uv run pytest
 
 test-cov: ## Run tests with a coverage report
-	uv run pytest --cov=api --cov=configs --cov=ingestion --cov=retrieval \
+	uv run pytest --cov=api --cov=configs --cov=domain --cov=ingestion --cov=retrieval \
 		--cov=generation --cov=evaluation --cov-report=term-missing
 
 lint: ## Lint with ruff

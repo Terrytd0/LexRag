@@ -1,0 +1,40 @@
+"""Ingest every PDF in data/raw/sample_contracts/ through the ingestion pipeline.
+
+Usage:
+    uv run python scripts/seed_corpus.py
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from pathlib import Path
+
+from configs.logging import configure_logging
+from ingestion.pipeline import IngestionPipeline
+from ingestion.repository import DocumentRepository, get_mongo_client
+
+logger = logging.getLogger(__name__)
+
+_CORPUS_DIR = Path(__file__).resolve().parent.parent / "data" / "raw" / "sample_contracts"
+
+
+def main() -> None:
+    """Walk `_CORPUS_DIR` and ingest each `.pdf` found there."""
+    configure_logging()
+
+    pdf_paths = sorted(_CORPUS_DIR.glob("*.pdf"))
+    if not pdf_paths:
+        logger.warning("no PDFs found in %s -- see its README.md", _CORPUS_DIR)
+        return
+
+    repository = DocumentRepository(get_mongo_client())
+    pipeline = IngestionPipeline(repository)
+
+    for path in pdf_paths:
+        doc_id = str(uuid.uuid4())
+        pipeline.ingest(doc_id, path)
+
+
+if __name__ == "__main__":
+    main()

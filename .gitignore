@@ -88,6 +88,9 @@ logs/
 # --- Local working data (see data/README.md) ---
 data/raw/*
 !data/raw/.gitkeep
+!data/raw/sample_contracts/
+data/raw/sample_contracts/*
+!data/raw/sample_contracts/README.md
 data/processed/*
 !data/processed/.gitkeep
 

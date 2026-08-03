@@ -14,7 +14,8 @@ from typing import Protocol
 
 from configs.settings import Settings, get_settings
 from domain.chunk import Chunk
-from domain.document import Document, DocumentStatus
+from domain.document import Document
+from domain.enums import DocumentStatus
 from ingestion.chunking.chunker import chunk_document
 from ingestion.loaders.pdf_loader import load_pdf
 from ingestion.repository import DocumentRepository

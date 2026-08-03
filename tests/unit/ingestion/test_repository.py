@@ -7,7 +7,8 @@ import pytest
 
 from configs.settings import Settings
 from domain.chunk import Chunk
-from domain.document import Document, DocumentStatus
+from domain.document import Document
+from domain.enums import DocumentStatus
 from ingestion.repository import DocumentRepository
 
 

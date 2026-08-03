@@ -8,7 +8,7 @@ import pytest
 
 from configs.settings import Settings
 from domain.chunk import Chunk
-from domain.document import DocumentStatus
+from domain.enums import DocumentStatus
 from ingestion.loaders.pdf_loader import LoadedDocument
 from ingestion.pipeline import IngestionPipeline
 

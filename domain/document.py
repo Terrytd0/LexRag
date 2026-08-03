@@ -3,19 +3,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-
-class DocumentStatus(StrEnum):
-    """Lifecycle status of a document through the ingestion pipeline."""
-
-    PENDING = "pending"
-    PROCESSING = "processing"
-    READY = "ready"
-    FAILED = "failed"
+from domain.enums import DocumentStatus
 
 
 class Document(BaseModel):

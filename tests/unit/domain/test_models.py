@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from domain.chunk import Chunk
 from domain.citation import Citation
-from domain.document import Document, DocumentStatus
+from domain.document import Document
+from domain.enums import DocumentStatus
 from domain.retrieval import RetrievalResult
 
 

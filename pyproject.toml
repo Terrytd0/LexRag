@@ -36,7 +36,9 @@ dependencies = [
     # --- Storage clients ---
     "pymongo>=4.9.0",
     "qdrant-client>=1.11.0",
-    "elasticsearch>=8.15.0",
+    # Pinned <9: elasticsearch-py 9.x sends a "compatible-with=9" Accept header
+    # that the docker-compose 8.15.0 server rejects outright (only 7/8 accepted).
+    "elasticsearch>=8.15.0,<9",
 
     # --- Generation (provider-agnostic interface, OpenAI-compatible default) ---
     "openai>=1.50.0",

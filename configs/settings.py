@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     qdrant_url: str = Field(default="http://localhost:6333", alias="QDRANT_URL")
     qdrant_api_key: str = Field(default="", alias="QDRANT_API_KEY")
     qdrant_collection: str = Field(default="lexrag_chunks", alias="QDRANT_COLLECTION")
+    # One of Qdrant's Distance enum values ("Cosine", "Dot", "Euclid"), matched
+    # case-insensitively -- Cosine is the right default for normalized
+    # sentence-transformers embeddings like bge-m3.
+    qdrant_distance_metric: str = Field(default="Cosine", alias="QDRANT_DISTANCE_METRIC")
 
     # --- Elasticsearch (BM25 keyword store) ---
     elasticsearch_url: str = Field(default="http://localhost:9200", alias="ELASTICSEARCH_URL")
@@ -41,6 +45,7 @@ class Settings(BaseSettings):
     # --- Embeddings ---
     embedding_model: str = Field(default="BAAI/bge-m3", alias="EMBEDDING_MODEL")
     embedding_dimensions: int = Field(default=1024, alias="EMBEDDING_DIMENSIONS")
+    embedding_batch_size: int = Field(default=32, alias="EMBEDDING_BATCH_SIZE")
 
     # --- Chunking ---
     chunk_size_tokens: int = Field(default=512, alias="CHUNK_SIZE_TOKENS")

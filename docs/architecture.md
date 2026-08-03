@@ -213,8 +213,16 @@ query.
 ### 2.7 Cross-Encoder Reranking
 
 **Decision:** Rerank the RRF-fused top-k (default top 50, `RETRIEVAL_TOP_K`)
-with a cross-encoder model, then take the top-N (default 8, `RERANK_TOP_K`)
-into generation.
+with a cross-encoder model — `BAAI/bge-reranker-v2-m3` by default
+(`RERANK_MODEL`) — then take the top-N (default 8, `RERANK_TOP_K`) into
+generation.
+
+> **Revision (infrastructure hardening pass):** the Day 1 default was
+> `cross-encoder/ms-marco-MiniLM-L-6-v2`. Switched to `bge-reranker-v2-m3`
+> as the BGE family's reranker, paired with the `bge-m3` embedding model
+> (2.8) — both trained by the same team with matching input-length
+> handling, which matters for full-length legal clauses rather than the
+> short passages ms-marco-MiniLM was tuned on.
 
 **Why:** Bi-encoders (used for the initial Qdrant vector search) embed the
 query and each chunk independently, trading accuracy for speed so we can
@@ -226,6 +234,9 @@ standard practice specifically because it gets both properties: an
 initial pass over the full corpus, and a precise final ranking of a small
 candidate set. It's also the direct lever for FR-8 and the precision@5
 acceptance threshold (Section 7.3 of `01-requirements.md`).
+`bge-reranker-v2-m3` specifically supports the same long, multilingual
+input `bge-m3` embeds, so a chunk isn't scored well at retrieval time and
+then truncated/misjudged at rerank time by a shorter-context model.
 
 **Alternatives considered:**
 - *Skip reranking, pass RRF output straight to generation* — cheaper and
@@ -235,26 +246,43 @@ acceptance threshold (Section 7.3 of `01-requirements.md`).
 - *LLM-as-reranker (ask the LLM to rank the RRF candidates)* — more
   expensive per query (extra LLM calls) and slower than a small local
   cross-encoder, for comparable or worse ranking quality at this scale.
+- *`cross-encoder/ms-marco-MiniLM-L-6-v2`* (original Day 1 default) —
+  smaller and faster, but tuned on short web-search passages; superseded
+  by `bge-reranker-v2-m3` for consistency with the embedding model and
+  better handling of long legal-clause context.
 
 **Consequences:** Reranking is an extra model load + inference step in the
 query path, budgeted for in the P95 latency target (NFR-1). The model
-(`cross-encoder/ms-marco-MiniLM-L-6-v2` by default) runs locally — no
-external API dependency or per-call cost.
+runs locally — no external API dependency or per-call cost — but
+`bge-reranker-v2-m3` is a larger model than the MiniLM alternative, so
+that latency budget deserves explicit measurement in
+`docs/experiments/retrieval_debugging.md` (Day 3), not just an assumption
+that it still fits.
 
-### 2.8 Embedding Model: BGE (BAAI/bge-base-en-v1.5)
+### 2.8 Embedding Model: BGE (BAAI/bge-m3)
 
-**Decision:** `BAAI/bge-base-en-v1.5` as the default embedding model
+**Decision:** `BAAI/bge-m3` as the default embedding model
 (`EMBEDDING_MODEL`, swappable via config), served through
-`sentence-transformers`.
+`sentence-transformers`, producing 1024-dimensional vectors
+(`EMBEDDING_DIMENSIONS`).
+
+> **Revision (infrastructure hardening pass):** the Day 1 default was
+> `BAAI/bge-base-en-v1.5` (768 dimensions, 512-token input limit). Switched
+> to `bge-m3` specifically for its 8192-token input window — legal
+> filings and long contract clauses routinely exceed 512 tokens, and a
+> truncated embedding silently drops the back half of a clause from
+> retrieval consideration, which is a correctness risk this project can't
+> accept quietly. `bge-m3`'s multilingual training is a secondary benefit,
+> not the driver.
 
 **Why:** Open-source, runs locally (no per-embedding API cost or external
 dependency during ingestion — relevant given the risk called out in the
-sprint plan about LLM/embedding provider dependency), strong performance
-on the MTEB retrieval benchmark for its size class, and 768 dimensions —
-a reasonable storage/accuracy trade-off for a ≤10k-chunk corpus. It's also
+sprint plan about LLM/embedding provider dependency), and strong
+performance on the MTEB retrieval benchmark for its size class. It's also
 directly swappable: `retrieval/vector_store/` and the embedding step in
 `ingestion/` depend on a model name and dimension from `configs/settings.py`,
-not a hardcoded provider.
+not a hardcoded provider — so this revision was a config change, not a
+retrieval-layer rewrite.
 
 **Alternatives considered:**
 - *OpenAI `text-embedding-3-small/large`* — strong quality, but a paid,
@@ -263,12 +291,19 @@ not a hardcoded provider.
   path, which conflicts with the sprint's explicit risk mitigation
   ("keep models small and cheap behind a provider-agnostic interface").
 - *`all-MiniLM-L6-v2`* — smaller and faster, but noticeably lower
-  retrieval quality than BGE-base on benchmark leaderboards; not the
-  right trade when recall@K is a gated metric.
+  retrieval quality than the BGE family on benchmark leaderboards; not
+  the right trade when recall@K is a gated metric.
+- *`BAAI/bge-base-en-v1.5`* (original Day 1 default) — smaller (768-dim)
+  and marginally faster to embed/store, but its 512-token limit is the
+  wrong trade for this corpus specifically; superseded for the reason
+  above.
 
 **Consequences:** Local embedding inference means ingestion throughput is
 bounded by local CPU/GPU rather than an API rate limit — a deliberate
 trade favoring reproducible offline evaluation over raw ingestion speed.
+1024-dimensional vectors also mean roughly 33% more Qdrant storage per
+chunk than the original 768-dim choice — acceptable at the ≤10k-chunk
+target corpus size (NFR-1), worth re-checking if that ceiling ever moves.
 
 ### 2.9 Generation LLM: Provider-Agnostic Interface, OpenAI-Compatible Default
 

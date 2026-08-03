@@ -76,8 +76,8 @@ Full diagram with ingestion/query/eval pipelines broken out:
 | Metadata / document store | MongoDB |
 | Vector store | Qdrant |
 | Keyword index | Elasticsearch (BM25) |
-| Embeddings | BAAI/bge-base-en-v1.5 (sentence-transformers) |
-| Reranker | cross-encoder/ms-marco-MiniLM-L-6-v2 |
+| Embeddings | BAAI/bge-m3 (sentence-transformers) |
+| Reranker | BAAI/bge-reranker-v2-m3 |
 | Generation | OpenAI-compatible LLM behind a provider-agnostic interface |
 | Evaluation | RAGAS + DeepEval |
 | Package/env management | uv |
@@ -98,35 +98,56 @@ Requires **Python 3.13** and [**uv**](https://docs.astral.sh/uv/).
 curl -LsSf https://astral.sh/uv/install.sh | sh   # macOS/Linux
 # irm https://astral.sh/uv/install.ps1 | iex        # Windows PowerShell
 
-# Clone and install
+# Clone, configure, and install (creates .venv, installs deps + git hooks)
 git clone <repo-url> lexrag && cd lexrag
-uv sync --extra dev
-
-# Configure environment
-cp .env.example .env   # fill in LLM_API_KEY etc.
-
-# Install git hooks
-uv run pre-commit install
+cp .env.example .env   # fill in OPENAI_API_KEY etc.
+make install
 ```
+
+`make install` runs `uv sync --extra dev` + `uv run pre-commit install`. No
+`make` on your system (plain Windows cmd/PowerShell)? Run those two commands
+directly — see [Development](#development) for the full command reference.
 
 ## Quick Start
 
 ```bash
 # Run the API locally (health check only until Day 4)
-uv run uvicorn api.main:app --reload
+make run
 curl http://localhost:8000/health
 
 # Run the full stack once docker-compose.yml lands (Day 2)
 docker compose up
 
 # Run tests
-uv run pytest
-
-# Lint, format, type-check
-uv run ruff check .
-uv run ruff format .
-uv run mypy .
+make test
 ```
+
+## Development
+
+Everyday commands are wrapped in the `Makefile` so CI and local development
+run the exact same checks. `make help` lists all targets; the ones you'll
+use most:
+
+| Command | What it does |
+|---|---|
+| `make install` | Create/refresh `.venv`, install deps (incl. dev extras), install pre-commit hooks |
+| `make run` | Run the API locally with auto-reload (`uv run python -m api`) |
+| `make test` | Run the unit test suite (`uv run pytest`) |
+| `make test-cov` | Run tests with a coverage report |
+| `make lint` | Lint with Ruff |
+| `make format` | Auto-format with Ruff (rewrites files) |
+| `make check` | Full quality gate: format check + lint + mypy + tests — what CI runs |
+
+Every target just wraps a `uv run ...` command, so if `make` isn't available
+(there's no native `make` on plain Windows cmd/PowerShell — use Git Bash,
+WSL, or install one), open the `Makefile` and run the underlying command
+directly.
+
+CI (`.github/workflows/ci.yml`) runs on every push and pull request:
+`uv sync --locked`, then `ruff check`, `ruff format --check`, `mypy`, and
+`pytest`, in that order — identical to `make check`. A `uv.lock` mismatch
+with `pyproject.toml` fails the build immediately, before any other check
+runs.
 
 ## Project Structure
 
@@ -158,6 +179,11 @@ layout and engineering conventions.
 | 4 | Cited generation & API — reranker, `/query`, `/upload` | ⬜ Planned |
 | 5 | Evaluation & quality — golden dataset, metrics, threshold tuning | ⬜ Planned |
 | 6 | Hardening & portfolio — CI quality gate, full Docker stack, walkthrough | ⬜ Planned |
+
+Lint/type/test CI (`.github/workflows/ci.yml`) and the `Makefile` command
+surface landed early, as infrastructure hardening ahead of Day 2. Day 6 adds
+the remaining piece: the evaluation quality gate (FR-12) that fails CI when
+retrieval/generation metrics regress.
 
 ## Evaluation
 

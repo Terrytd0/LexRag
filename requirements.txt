@@ -1,0 +1,41 @@
+# Plain-pip install path (`pip install -r requirements.txt`) for anyone not
+# using uv. `pyproject.toml` + `uv.lock` are the source of truth -- this file
+# is generated to match them; regenerate with:
+#   uv export --no-hashes --no-dev -o requirements.txt
+#
+# Preferred setup is `uv sync` (see README.md Installation).
+
+# --- Web framework ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+
+# --- Data / settings ---
+pydantic>=2.9.0
+pydantic-settings>=2.5.0
+python-dotenv>=1.0.1
+
+# --- Document processing ---
+pypdf>=4.3.0
+tiktoken>=0.8.0
+
+# --- Embeddings / reranking ---
+sentence-transformers>=3.1.0
+transformers>=4.44.0
+torch>=2.4.0
+
+# --- Storage clients ---
+pymongo>=4.9.0
+qdrant-client>=1.11.0
+elasticsearch>=8.15.0
+
+# --- Generation (provider-agnostic interface, OpenAI-compatible default) ---
+openai>=1.50.0
+httpx>=0.27.0
+
+# --- Evaluation ---
+ragas>=0.2.0
+deepeval>=1.4.0
+
+# --- Dev / quality tooling (pip install -r requirements.txt -r requirements-dev.txt) ---
+# See pyproject.toml [project.optional-dependencies].dev, or `uv sync --extra dev`.

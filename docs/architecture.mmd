@@ -1,0 +1,56 @@
+%% LexRAG system architecture
+%% Render: https://mermaid.live, or any Markdown viewer with Mermaid support.
+flowchart TD
+    subgraph ingest["Ingestion Pipeline (Day 2)"]
+        direction TB
+        A[["PDF Upload<br/>POST /upload"]] --> B["Document Loader<br/>text + page extraction"]
+        B --> C["Chunker<br/>size=512 tok, overlap=64 tok"]
+        C --> D["Embedder<br/>BGE sentence-embedding model"]
+    end
+
+    subgraph storage["Storage Layer"]
+        direction TB
+        M[("MongoDB<br/>raw docs + chunk metadata<br/>doc_id, section, page, chunk_index")]
+        Q[("Qdrant<br/>dense chunk vectors")]
+        E[("Elasticsearch<br/>BM25 chunk text index")]
+    end
+
+    C -- "raw text + provenance" --> M
+    D -- "vector + payload" --> Q
+    C -- "chunk text" --> E
+
+    subgraph query["Query Pipeline (Day 3-4)"]
+        direction TB
+        QQ[["Natural-language Question<br/>POST /query"]] --> HR["Hybrid Retrieval<br/>vector search + BM25 search, in parallel"]
+        VQ["Qdrant vector search"] --> HR
+        ESQ["Elasticsearch BM25 search"] --> HR
+        HR --> RRF["Reciprocal Rank Fusion<br/>k=60, merges ranked lists"]
+        RRF --> CE["Cross-Encoder Reranker<br/>reranks top-k candidates"]
+        CE --> GATE{"Best score ≥<br/>relevance threshold?"}
+        GATE -- "no" --> REFUSE["Refusal Response<br/>'insufficient evidence'"]
+        GATE -- "yes" --> GEN["LLM Generation<br/>citation-grounded prompt"]
+        GEN --> CITE["Citations + Sources<br/>doc, section, page, chunk_id"]
+        CITE --> RESP[["QueryResponse<br/>answer + citations + sources"]]
+        REFUSE --> RESP
+    end
+
+    Q -.-> VQ
+    E -.-> ESQ
+    M -.-> HR
+
+    subgraph eval["Evaluation Pipeline (Day 5-6)"]
+        direction TB
+        GOLD[("Golden Dataset<br/>25-30 Q/A + refusal cases")]
+        HARNESS["Eval Harness<br/>RAGAS / DeepEval"]
+        METRICS["Metrics Report<br/>recall@K, precision@K,<br/>faithfulness, refusal accuracy"]
+        GATE_CI{"Meets thresholds?"}
+        GOLD --> HARNESS
+        RESP -.-> HARNESS
+        HARNESS --> METRICS
+        METRICS --> GATE_CI
+        GATE_CI -- "no" --> FAIL["CI: build fails"]
+        GATE_CI -- "yes" --> PASS["CI: build passes"]
+    end
+
+    classDef store fill:#eef,stroke:#446,stroke-width:1px;
+    class M,Q,E,GOLD store;

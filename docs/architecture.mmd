@@ -10,9 +10,9 @@ flowchart TD
 
     subgraph storage["Storage Layer"]
         direction TB
-        M[("MongoDB<br/>raw docs + chunk metadata<br/>doc_id, section, page, chunk_index")]
-        Q[("Qdrant<br/>dense chunk vectors")]
-        E[("Elasticsearch<br/>BM25 chunk text index")]
+        M[("MongoDB<br/>raw docs + chunk metadata<br/>doc_id, section, page, chunk_index<br/><b>Source of Truth</b>")]
+        Q[("Qdrant<br/>dense chunk vectors<br/><b>Derived Vector Index</b>")]
+        E[("Elasticsearch<br/>BM25 chunk text index<br/><b>Derived BM25 Index</b>")]
     end
 
     C -- "raw text + provenance" --> M
@@ -21,14 +21,23 @@ flowchart TD
 
     subgraph query["Query Pipeline (Day 3-4)"]
         direction TB
-        QQ[["Natural-language Question<br/>POST /query"]] --> HR["Hybrid Retrieval<br/>vector search + BM25 search, in parallel"]
-        VQ["Qdrant vector search"] --> HR
-        ESQ["Elasticsearch BM25 search"] --> HR
+        QQ[["Natural-language Question<br/>POST /query"]] --> HR["Hybrid Retrieval<br/>dispatches dense + sparse queries"]
+
+        subgraph par["Parallel Retrieval"]
+            direction LR
+            VQ["Dense Search<br/>(Qdrant)"]
+            ESQ["Sparse Search<br/>(BM25)"]
+        end
+
+        VQ --> HR
+        ESQ --> HR
         HR --> RRF["Reciprocal Rank Fusion<br/>k=60, merges ranked lists"]
         RRF --> CE["Cross-Encoder Reranker<br/>reranks top-k candidates"]
-        CE --> GATE{"Best score ≥<br/>relevance threshold?"}
+        CE --> TOPN["Top-N Ranked Chunks<br/>RERANK_TOP_K candidates"]
+        TOPN --> GATE{"Best score ≥<br/>relevance threshold?"}
         GATE -- "no" --> REFUSE["Refusal Response<br/>'insufficient evidence'"]
-        GATE -- "yes" --> GEN["LLM Generation<br/>citation-grounded prompt"]
+        GATE -- "yes" --> PROMPT["Citation-Grounded Prompt<br/>cite only retrieved chunks"]
+        PROMPT --> GEN["LLM Generation<br/>provider-agnostic interface"]
         GEN --> CITE["Citations + Sources<br/>doc, section, page, chunk_id"]
         CITE --> RESP[["QueryResponse<br/>answer + citations + sources"]]
         REFUSE --> RESP
@@ -50,7 +59,11 @@ flowchart TD
         METRICS --> GATE_CI
         GATE_CI -- "no" --> FAIL["CI: build fails"]
         GATE_CI -- "yes" --> PASS["CI: build passes"]
+        GATE_CI -.-> RTUNE["Retrieval Tuning<br/>informs RRF_K, RERANK_TOP_K,<br/>chunk size (configs/settings.py)"]
     end
 
     classDef store fill:#dbe4ff,stroke:#446,stroke-width:1px,color:#1a1a2e;
     class M,Q,E,GOLD store;
+
+    classDef aux fill:transparent,stroke:#888,stroke-width:1px,stroke-dasharray: 4 3;
+    class par,RTUNE aux;

@@ -147,10 +147,13 @@ path (alongside Qdrant), which is the sprint's called-out top risk (see
 Section 3). Ingestion validates both writes independently before a
 document is marked queryable.
 
-### 2.5 Hybrid Retrieval (Vector + BM25 in Parallel)
+### 2.5 Hybrid Retrieval (Dense + Sparse Search in Parallel)
 
-**Decision:** Every query runs both a Qdrant vector search and an
-Elasticsearch BM25 search, concurrently, over the same candidate pool.
+**Decision:** Every query runs a **dense search** (Qdrant vector search)
+and a **sparse search** (Elasticsearch BM25 keyword search) concurrently,
+over the same candidate pool — labeled "Dense Search" / "Sparse Search" in
+`docs/architecture.mmd` to name the two retrieval modes independently of
+which store implements them.
 
 **Why:** Vector and lexical search fail in different, complementary ways.
 Vector search generalizes across phrasing ("end the agreement early" ≈

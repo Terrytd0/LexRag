@@ -31,27 +31,12 @@ Architecture decisions and trade-offs: [`docs/architecture.md`](docs/architectur
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    A[PDF Upload] --> B[Chunk + Embed]
-    B --> C[(MongoDB<br/>metadata)]
-    B --> D[(Qdrant<br/>vectors)]
-    B --> E[(Elasticsearch<br/>BM25)]
-    F[Question] --> G[Hybrid Retrieval]
-    D --> G
-    E --> G
-    G --> H[RRF Merge]
-    H --> I[Cross-Encoder Rerank]
-    I --> J{Sufficient evidence?}
-    J -- no --> K[Refuse]
-    J -- yes --> L[Cited Generation]
-    L --> M[Answer + Citations]
-    K --> M
-    M --> N[Evaluation Pipeline]
-```
+![LexRAG system architecture: PDF ingestion pipeline feeding MongoDB/Qdrant/Elasticsearch, a hybrid retrieval query pipeline with RRF fusion and cross-encoder reranking, and an evaluation pipeline gating CI](docs/screenshots/LexRAG.png)
 
-Full diagram with ingestion/query/eval pipelines broken out:
-[`docs/architecture.mmd`](docs/architecture.mmd).
+Editable source: [`docs/architecture.mmd`](docs/architecture.mmd). Render
+changes at [mermaid.live](https://mermaid.live) or a Mermaid-aware editor,
+then re-export the PNG to `docs/screenshots/LexRAG.png` to keep this in
+sync.
 
 ## Features
 

@@ -257,3 +257,142 @@ gives a statistically meaningful signal to tune against.
 - Day 5-6: replace this toy corpus with the real golden dataset and compute
   actual recall@10/precision@5 against the FR-11 thresholds -- this run
   validates *mechanism*, not *quality*.
+
+---
+
+## Run: 2026-08-04 (Day 4 query-latency profiling & RERANK_INPUT_TOP_K)
+
+Follow-up to the Day 3 run above's first next-step item, once the Day 4
+cross-encoder reranker (`retrieval/reranker/cross_encoder.py`) and `POST
+/query` existed to profile end-to-end. Unlike the Day 3 run's 13-chunk toy
+corpus, this one used the real live corpus (`msa-vendorco.pdf`,
+`saas-agreement.pdf`, `nda-partnerco.pdf`, and a real 64-page document,
+`Legal-Aid-Manual_VERSION-7...pdf`, 58 chunks -- 63 unique RRF-merged
+candidates for the test query below) via a live server manually exercised
+through Swagger, which surfaced a real operational problem: a 64-page
+upload took 3+ minutes and pegged CPU at 95%, and a subsequent query hung
+long enough that it was killed manually from Task Manager.
+
+**Environment:** local Docker Compose stack, `BAAI/bge-m3` embeddings +
+`BAAI/bge-reranker-v2-m3` reranking via `sentence-transformers` on CPU only
+(`torch==2.13.0+cpu`, no CUDA; confirmed no GPU acceleration path is active
+on this machine's Intel Iris Xe iGPU either -- would need `torch-directml`
+or OpenVINO, neither installed).
+
+### Stage-by-stage profile (one real query, models pre-warmed)
+
+Query: *"Can either party terminate the agreement for convenience, and how
+much notice is required?"*
+
+| Stage | Time | % of total |
+|---|---|---|
+| Hybrid retrieval (dense+sparse+RRF, sequential sum) | 0.502s | 0.2% |
+| -- Dense retrieval | 0.425s | 0.19% |
+| -- Sparse retrieval | 0.077s | 0.03% |
+| -- RRF fusion | <0.001s | ~0% |
+| **Cross-encoder reranking** | **216.434s** | **97.6%** |
+| Prompt construction | <0.001s | ~0% |
+| LLM generation | 4.806s | 2.2% |
+| Citation generation | <0.001s | ~0% |
+| **TOTAL** | **221.743s** | 100% |
+
+Candidate counts: 50 dense + 50 sparse -> 63 unique after RRF dedup -> all
+63 passed to the reranker -> 8 kept (`RERANK_TOP_K`) -> 8 sent to the LLM.
+Reranker cost: **~3,435ms/candidate** on CPU. `CrossEncoderReranker.rerank()`
+scores every candidate handed to it before truncating to `RERANK_TOP_K` --
+the top-k cutoff only trims the *output*, not the *input* -- so all 63
+candidates paid the full cross-encoder cost even though only 8 were ever
+used downstream. This, not embedding, dense/sparse search, RRF, or the LLM
+call, is overwhelmingly the bottleneck.
+
+(Separately, ingesting the 64-page/58-chunk PDF took 220.9s, also CPU-bound
+embedding -- consistent with the same root cause: CPU-only transformer
+inference with no GPU acceleration path configured.)
+
+### RERANK_INPUT_TOP_K: bounding reranker cost
+
+Introduced a new setting, `RERANK_INPUT_TOP_K` (`configs/settings.py`,
+default `20`), applied in `generation/pipeline.py::QueryPipeline.answer()`
+as `retrieved[: settings.rerank_input_top_k]` between `HybridRetriever
+.retrieve` and `CrossEncoderReranker.rerank`. `HybridRetriever.retrieve`
+itself is unmodified -- `RETRIEVAL_TOP_K`, dense/sparse search, and RRF
+fusion are untouched, so retrieval-only metrics stay measurable
+independently of this trim, per this doc's own §2.6 "measured separately"
+goal referenced in the Day 3 run above.
+
+No golden dataset exists yet (Day 5), so quality here is a single-query
+self-consistency check: each candidate-count's reranked top-10 compared
+against the untrimmed baseline's (63-candidate) reranked top-10 stands in
+for "recall@10," not true labeled relevance. Take these numbers as directional.
+
+**Baseline (63) vs. the chosen default (20), same shared RRF output:**
+
+| Metric | Baseline | RERANK_INPUT_TOP_K=20 | Δ |
+|---|---|---|---|
+| Reranker latency | 192.5s | 59.8s | -132.7s |
+| Total latency | 196.5s | 63.4s | -133.1s |
+| Speedup | -- | **3.10x** | -- |
+| Citations identical to baseline | -- | 7/8 | the one swap was noise-for-noise (an off-topic chunk for another); the one citation the answer actually cites, `msa-vendorco:1`, was unchanged and ranked [1] in both |
+| Answer | "...60 days'... without cause and without penalty, subject to specific wind-down obligations... [1]" | "...60 days'... without cause and without penalty, subject to any specified wind-down obligations... [1]" | trivial paraphrase only |
+
+Per-candidate reranker cost was ~3.0s in both runs (192.499s/63 = 3055.5ms,
+59.778s/20 = 2988.9ms) -- confirms the linear-cost assumption behind this
+lever.
+
+**Sweep across 10/13/15/18/20** (same query, same shared RRF output):
+
+| RERANK_INPUT_TOP_K | Reranker Latency | Total Latency | Recall@10 vs baseline | Citation Overlap (/8) | Answer Materially Changed |
+|---|---|---|---|---|---|
+| baseline (63) | 214.5s | 219.2s | 10/10 (ref) | 8/8 (ref) | N/A (reference) |
+| 10 | 36.9s | 38.9s | 4/10 | 4/8 | False |
+| 13 | 47.4s | 49.3s | 5/10 | 5/8 | False |
+| 15 | 53.1s | 54.8s | 7/10 | 6/8 | False |
+| 18 | 59.6s | 61.9s | 8/10 | 6/8 | False |
+| 20 | 59.8s | 61.9s | 9/10 | 7/8 | False |
+
+All six raw answers (baseline + 5 variants) state the same core facts (60
+days' notice, without cause, without penalty, wind-down obligations, citing
+`[1]` correctly) with only cosmetic wording differences -- the heuristic
+"materially changed" flag (key-fact presence + `[1]` usage) was `False` at
+every tested value, even at `RERANK_INPUT_TOP_K=10` where only 4/10 top
+chunks and 4/8 citations matched baseline. That gap between "citation set
+churned a lot" and "answer content didn't change" is itself notable: for
+this query/corpus, only one candidate chunk (`msa-vendorco:1`) actually
+mattered to the answer, and it survived RRF's ranking comfortably inside
+the top 10 at every tested value -- the churn in citations 2-8 is mostly
+noise from an otherwise-unrelated multi-document corpus, not evidence of
+losing the relevant chunk. Recall@10 rises roughly monotonically with
+`RERANK_INPUT_TOP_K`, and reranker latency rises roughly linearly with it
+-- a fairly clean latency/recall-proxy trade-off along one dimension.
+
+### Decision
+
+**Iterate -- measurement only, no further change made this session beyond
+the `RERANK_INPUT_TOP_K=20` default already set.** It held answer quality
+and 7/8 citations for the one tested query at 3.10x lower latency. The
+sweep shows real degradation in the recall proxy and raw citation overlap
+as the value drops toward 10, even though the single-query "materially
+changed" heuristic didn't catch it -- which is exactly why that heuristic
+alone shouldn't be trusted to pick a final production value.
+
+### Next steps
+
+- **Do not tune `RERANK_INPUT_TOP_K` further from a single query.** Rerun
+  this sweep (or a proper precision@K/recall@K + faithfulness eval) against
+  the real golden dataset once it exists (Day 5-6) before treating any
+  value here as validated.
+- The golden set should specifically include queries where the relevant
+  chunk sits outside the top ~15-20 of the RRF ranking, if any exist in the
+  real corpus -- this run's corpus happened to rank the one relevant chunk
+  very highly for this query, so the recall-proxy degradation at low
+  `RERANK_INPUT_TOP_K` values may understate real-world risk for harder
+  queries.
+- Consider replacing the hand-picked key-fact "materially changed" check
+  with a real reference-answer comparison (e.g. a RAGAS/DeepEval
+  faithfulness or answer-similarity metric) once the golden dataset's
+  expected answers exist.
+- GPU/DirectML or OpenVINO acceleration for the reranker (and embedding
+  model) is a separate, larger lever, orthogonal to this candidate-count
+  trim -- both could stack. Not pursued this session; would need real
+  validation against `bge-reranker-v2-m3`/`bge-m3` outputs before trusting
+  it, per this machine's confirmed lack of an active GPU acceleration path.

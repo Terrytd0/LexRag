@@ -6,6 +6,7 @@ Usage:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import uuid
 from pathlib import Path
@@ -50,7 +51,12 @@ def main() -> None:
 
     for path in pdf_paths:
         doc_id = str(uuid.uuid4())
-        pipeline.ingest(doc_id, path)
+        contents = path.read_bytes()
+        content_hash = hashlib.sha256(contents).hexdigest()
+        if pipeline.find_existing_document(content_hash) is not None:
+            logger.info("skipping already-ingested file path=%s", path)
+            continue
+        pipeline.ingest(doc_id, path, content_hash, len(contents))
 
 
 if __name__ == "__main__":

@@ -22,9 +22,20 @@ class SparseRetriever:
         self._keyword_store = keyword_store
         self._settings = settings or get_settings()
 
-    def retrieve(self, query: str, top_k: int | None = None) -> list[RetrievalResult]:
-        """Return the `top_k` best BM25 matches for `query`, best sparse score first."""
+    def retrieve(
+        self,
+        query: str,
+        top_k: int | None = None,
+        document_ids: list[str] | None = None,
+    ) -> list[RetrievalResult]:
+        """Return the `top_k` best BM25 matches for `query`, best sparse score first.
+
+        `document_ids`, if given, restricts the search to those documents
+        (`POST /query`'s document-scoped filter) via `ElasticsearchKeywordStore`'s
+        native `bool` filter clause -- narrowing happens in the search itself,
+        not by post-filtering results here.
+        """
         limit = top_k or self._settings.retrieval_top_k
-        matches = self._keyword_store.search(query, limit)
+        matches = self._keyword_store.search(query, limit, document_ids=document_ids)
         logger.debug("sparse retrieval complete result_count=%d", len(matches))
         return [RetrievalResult(chunk=chunk, sparse_score=score) for chunk, score in matches]

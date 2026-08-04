@@ -34,7 +34,7 @@ def test_retrieve_wraps_bm25_matches_as_retrieval_results(settings: Settings) ->
     retriever = SparseRetriever(keyword_store, settings=settings)
     results = retriever.retrieve("Section 8.3")
 
-    keyword_store.search.assert_called_once_with("Section 8.3", 5)
+    keyword_store.search.assert_called_once_with("Section 8.3", 5, document_ids=None)
     assert [r.sparse_score for r in results] == [12.4, 3.1]
     assert [r.dense_score for r in results] == [None, None]
     assert [r.chunk.chunk_id for r in results] == ["doc-1:0", "doc-1:1"]
@@ -46,7 +46,7 @@ def test_retrieve_falls_back_to_settings_top_k_when_not_given(settings: Settings
 
     SparseRetriever(keyword_store, settings=settings).retrieve("query")
 
-    keyword_store.search.assert_called_once_with("query", 5)
+    keyword_store.search.assert_called_once_with("query", 5, document_ids=None)
 
 
 def test_retrieve_uses_explicit_top_k_over_settings_default(settings: Settings) -> None:
@@ -55,7 +55,7 @@ def test_retrieve_uses_explicit_top_k_over_settings_default(settings: Settings) 
 
     SparseRetriever(keyword_store, settings=settings).retrieve("query", top_k=2)
 
-    keyword_store.search.assert_called_once_with("query", 2)
+    keyword_store.search.assert_called_once_with("query", 2, document_ids=None)
 
 
 def test_retrieve_preserves_chunk_metadata(settings: Settings) -> None:
@@ -66,3 +66,14 @@ def test_retrieve_preserves_chunk_metadata(settings: Settings) -> None:
     results = SparseRetriever(keyword_store, settings=settings).retrieve("query")
 
     assert results[0].chunk == chunk
+
+
+def test_retrieve_passes_document_ids_through_to_keyword_store(settings: Settings) -> None:
+    keyword_store = MagicMock(name="keyword_store")
+    keyword_store.search.return_value = []
+
+    SparseRetriever(keyword_store, settings=settings).retrieve(
+        "query", document_ids=["doc-1", "doc-2"]
+    )
+
+    keyword_store.search.assert_called_once_with("query", 5, document_ids=["doc-1", "doc-2"])

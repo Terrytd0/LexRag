@@ -58,6 +58,30 @@ class DocumentRepository:
         raw = self._documents.find_one({"doc_id": doc_id}, _EXCLUDE_MONGO_ID)
         return Document.model_validate(raw) if raw else None
 
+    def get_document_by_hash(self, content_hash: str) -> Document | None:
+        """Fetch a Document by its content hash, or None if no match exists.
+
+        Backs duplicate-upload detection (`IngestionPipeline.find_existing_document`)
+        -- older documents ingested before `content_hash` existed simply never match.
+        """
+        raw = self._documents.find_one({"content_hash": content_hash}, _EXCLUDE_MONGO_ID)
+        return Document.model_validate(raw) if raw else None
+
+    def list_documents(self) -> list[Document]:
+        """All documents, most recently uploaded first."""
+        cursor = self._documents.find({}, _EXCLUDE_MONGO_ID).sort("upload_timestamp", -1)
+        return [Document.model_validate(raw) for raw in cursor]
+
+    def delete_document(self, doc_id: str) -> None:
+        """Delete a document and all its chunks. No-op if `doc_id` doesn't exist.
+
+        Only touches MongoDB -- the Qdrant/Elasticsearch side of a delete is
+        `IngestionPipeline.delete`'s job (via each `ChunkIndexer`), mirroring
+        how `save_chunks`/indexers are split on the write path.
+        """
+        self._documents.delete_one({"doc_id": doc_id})
+        self._chunks.delete_many({"doc_id": doc_id})
+
     def get_chunks(self, doc_id: str) -> list[Chunk]:
         """Fetch all chunks for a document, ordered by `chunk_index`."""
         cursor = self._chunks.find({"doc_id": doc_id}, _EXCLUDE_MONGO_ID).sort("chunk_index", 1)

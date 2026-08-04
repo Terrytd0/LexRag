@@ -5,10 +5,11 @@ generation system that answers questions over contracts and case filings
 with traceable citations, and refuses to answer when the evidence isn't
 there.
 
-> **Status:** Sprint 5, Day 1 (Discovery & Solution Design) complete. This
-> is a scaffold — requirements, architecture, and repository structure are
-> in place; ingestion, retrieval, and generation are implemented Day 2–4
-> (see [Roadmap](#roadmap)).
+> **Status:** Sprint 5, Days 1–4 complete, plus a Day 4 production-hardening
+> pass (duplicate detection, document browser/delete, document-scoped
+> queries, persistent model cache). Ingestion, hybrid retrieval, reranking,
+> citation-grounded generation, and the full REST API are implemented and
+> Dockerized end-to-end. Evaluation (Day 5) is next (see [Roadmap](#roadmap)).
 
 ## Overview
 
@@ -44,14 +45,26 @@ sync.
   (document, section, page, chunk index).
 - Hybrid retrieval: parallel dense vector (Qdrant) + BM25 (Elasticsearch)
   search, merged with Reciprocal Rank Fusion.
-- Cross-encoder reranking of fused candidates before generation.
+- Cross-encoder reranking of fused candidates, with a configurable
+  pre-rerank candidate cap (`RERANK_INPUT_TOP_K`) to bound the dominant cost
+  in query latency.
 - Citation-grounded generation that cites only retrieved passages, with
-  explicit refusal when evidence is insufficient.
-- `POST /upload` and `POST /query` REST API with a typed response contract
-  (answer, citations, sources).
+  explicit refusal when evidence is insufficient or the question requires
+  synthesis the retrieved evidence doesn't support.
+- `POST /upload`, `POST /query`, `GET /documents`, and
+  `DELETE /documents/{doc_id}` REST API with a typed response contract
+  (answer, citations, sources, confidence).
+- Duplicate-upload detection (SHA-256 content hash) — a byte-identical
+  re-upload is skipped entirely and returns the existing document instead
+  of re-ingesting.
+- Document-scoped queries — `POST /query`'s optional `document_ids` filters
+  retrieval (via native Qdrant/Elasticsearch filters, not post-filtering) to
+  one or more specific documents instead of the whole corpus.
 - Golden-dataset evaluation harness (RAGAS/DeepEval) reporting recall@K,
   precision@K, and faithfulness, wired into CI as a quality gate.
-- Fully Dockerized local stack (API + MongoDB + Qdrant + Elasticsearch).
+- Fully Dockerized local stack (API + MongoDB + Qdrant + Elasticsearch),
+  including a persistent volume for downloaded embedding/reranker model
+  weights so rebuilding the API image doesn't re-download them.
 
 ## Tech Stack
 
@@ -96,16 +109,27 @@ directly — see [Development](#development) for the full command reference.
 ## Quick Start
 
 ```bash
-# Run the API locally (health check only until Day 4)
-make run
+# Run the full stack (API + MongoDB + Qdrant + Elasticsearch)
+cp .env.example .env   # fill in OPENAI_API_KEY etc.
+docker compose up
+
+# Health check
 curl http://localhost:8000/health
 
-# Run the full stack once docker-compose.yml lands (Day 2)
-docker compose up
+# Upload a PDF, then ask a question against the indexed corpus
+curl -X POST http://localhost:8000/upload -F "file=@contract.pdf;type=application/pdf"
+curl -X POST http://localhost:8000/query -H "Content-Type: application/json" \
+  -d '{"question": "What is the termination notice period?"}'
+
+# Browse ingested documents
+curl http://localhost:8000/documents
 
 # Run tests
 make test
 ```
+
+Interactive API docs (Swagger UI) are at `http://localhost:8000/docs` once
+the stack is up.
 
 ## Development
 
@@ -159,9 +183,9 @@ layout and engineering conventions.
 | Day | Focus | Status |
 |---|---|---|
 | 1 | Discovery & solution design — requirements, architecture, scaffold | ✅ Done |
-| 2 | Data & ingestion foundation — Docker Compose, chunker, MongoDB schema | ⬜ Planned |
-| 3 | Hybrid retrieval — Qdrant + Elasticsearch, RRF merge | ⬜ Planned |
-| 4 | Cited generation & API — reranker, `/query`, `/upload` | ⬜ Planned |
+| 2 | Data & ingestion foundation — Docker Compose, chunker, MongoDB schema | ✅ Done |
+| 3 | Hybrid retrieval — Qdrant + Elasticsearch, RRF merge | ✅ Done |
+| 4 | Cited generation & API — reranker, `/query`, `/upload`, plus a production-hardening pass (dedup, document browser/delete, document-scoped queries, persistent model cache) | ✅ Done |
 | 5 | Evaluation & quality — golden dataset, metrics, threshold tuning | ⬜ Planned |
 | 6 | Hardening & portfolio — CI quality gate, full Docker stack, walkthrough | ⬜ Planned |
 
@@ -196,7 +220,9 @@ Tracked as stretch goals in [`docs/01-requirements.md` §4](docs/01-requirements
 - Structured termination-clause detection (beyond free-text Q/A).
 - Streamed (token-by-token) `/query` responses.
 - Query rewriting/decomposition for multi-part legal questions.
-- Per-matter/client document isolation (multi-tenant access control).
+- Per-matter/client access control on top of the existing `document_ids`
+  query filter (today it's an opt-in scoping parameter, not an
+  authentication/authorization boundary).
 
 ## License
 

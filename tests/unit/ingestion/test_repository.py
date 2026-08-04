@@ -9,7 +9,7 @@ from configs.settings import Settings
 from domain.chunk import Chunk
 from domain.document import Document
 from domain.enums import DocumentStatus
-from ingestion.repository import DocumentRepository
+from ingestion.repository import _EXCLUDE_MONGO_ID, DocumentRepository
 
 
 @pytest.fixture
@@ -100,6 +100,65 @@ def test_get_document_parses_stored_document(mock_client: MagicMock, settings: S
     result = repository.get_document("doc-1")
 
     assert result == document
+
+
+def test_get_document_by_hash_returns_none_when_missing(
+    mock_client: MagicMock, settings: Settings
+) -> None:
+    _collection(mock_client, "documents").find_one.return_value = None
+    repository = DocumentRepository(mock_client, settings)
+
+    assert repository.get_document_by_hash("abc123") is None
+
+
+def test_get_document_by_hash_parses_stored_document(
+    mock_client: MagicMock, settings: Settings
+) -> None:
+    document = _document()
+    _collection(mock_client, "documents").find_one.return_value = document.model_dump(mode="json")
+    repository = DocumentRepository(mock_client, settings)
+
+    result = repository.get_document_by_hash("abc123")
+
+    assert result == document
+    _collection(mock_client, "documents").find_one.assert_called_once_with(
+        {"content_hash": "abc123"}, _EXCLUDE_MONGO_ID
+    )
+
+
+def test_list_documents_returns_all_sorted_by_upload_timestamp_descending(
+    mock_client: MagicMock, settings: Settings
+) -> None:
+    document = _document()
+    find_result = MagicMock()
+    find_result.sort.return_value = [document.model_dump(mode="json")]
+    _collection(mock_client, "documents").find.return_value = find_result
+    repository = DocumentRepository(mock_client, settings)
+
+    result = repository.list_documents()
+
+    assert result == [document]
+    find_result.sort.assert_called_once_with("upload_timestamp", -1)
+
+
+def test_list_documents_empty(mock_client: MagicMock, settings: Settings) -> None:
+    find_result = MagicMock()
+    find_result.sort.return_value = []
+    _collection(mock_client, "documents").find.return_value = find_result
+    repository = DocumentRepository(mock_client, settings)
+
+    assert repository.list_documents() == []
+
+
+def test_delete_document_deletes_from_both_collections(
+    mock_client: MagicMock, settings: Settings
+) -> None:
+    repository = DocumentRepository(mock_client, settings)
+
+    repository.delete_document("doc-1")
+
+    _collection(mock_client, "documents").delete_one.assert_called_once_with({"doc_id": "doc-1"})
+    _collection(mock_client, "chunks").delete_many.assert_called_once_with({"doc_id": "doc-1"})
 
 
 def test_get_chunks_returns_chunks_sorted_by_index(

@@ -1,8 +1,9 @@
 """Canonical domain models shared across ingestion, retrieval, generation, evaluation,
 and the API. Single source of truth for business objects -- other modules import
 these rather than defining duplicate representations. Introduced Sprint 5 Day 2;
-grows as later sprint days introduce new concepts (e.g. a QueryResult wrapping
-RetrievalResult + the generated answer, on Day 4).
+grows as later sprint days introduce new concepts -- e.g. `GenerationResult`
+(the generated answer + citations + confidence, wrapping `RetrievalResult`) on
+Day 4.
 
 Shared string-based enums (`DocumentStatus` and friends) live in `domain.enums`,
 not scattered across individual model modules -- see that module's docstring.
@@ -25,6 +26,7 @@ from domain.chunk import Chunk
 from domain.citation import Citation
 from domain.document import Document
 from domain.enums import DocumentStatus
+from domain.generation import GenerationResult
 from domain.retrieval import RetrievalResult
 
 __all__ = [
@@ -32,5 +34,6 @@ __all__ = [
     "Citation",
     "Document",
     "DocumentStatus",
+    "GenerationResult",
     "RetrievalResult",
 ]

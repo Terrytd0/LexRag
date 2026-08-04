@@ -37,7 +37,7 @@ def test_retrieve_embeds_query_and_wraps_matches_as_retrieval_results(settings: 
     results = retriever.retrieve("indemnification clause")
 
     embedding_service.embed_query.assert_called_once_with("indemnification clause")
-    vector_store.search.assert_called_once_with([0.1, 0.2], 5)
+    vector_store.search.assert_called_once_with([0.1, 0.2], 5, document_ids=None)
     assert [r.dense_score for r in results] == [0.9, 0.5]
     assert [r.sparse_score for r in results] == [None, None]
     assert [r.chunk.chunk_id for r in results] == ["doc-1:0", "doc-1:1"]
@@ -51,7 +51,7 @@ def test_retrieve_falls_back_to_settings_top_k_when_not_given(settings: Settings
 
     DenseRetriever(vector_store, embedding_service, settings=settings).retrieve("query")
 
-    vector_store.search.assert_called_once_with([0.1], 5)
+    vector_store.search.assert_called_once_with([0.1], 5, document_ids=None)
 
 
 def test_retrieve_uses_explicit_top_k_over_settings_default(settings: Settings) -> None:
@@ -62,7 +62,7 @@ def test_retrieve_uses_explicit_top_k_over_settings_default(settings: Settings) 
 
     DenseRetriever(vector_store, embedding_service, settings=settings).retrieve("query", top_k=2)
 
-    vector_store.search.assert_called_once_with([0.1], 2)
+    vector_store.search.assert_called_once_with([0.1], 2, document_ids=None)
 
 
 def test_retrieve_preserves_chunk_metadata(settings: Settings) -> None:
@@ -75,3 +75,16 @@ def test_retrieve_preserves_chunk_metadata(settings: Settings) -> None:
     results = DenseRetriever(vector_store, embedding_service, settings=settings).retrieve("query")
 
     assert results[0].chunk == chunk
+
+
+def test_retrieve_passes_document_ids_through_to_vector_store(settings: Settings) -> None:
+    vector_store = MagicMock(name="vector_store")
+    vector_store.search.return_value = []
+    embedding_service = MagicMock(name="embedding_service")
+    embedding_service.embed_query.return_value = [0.1]
+
+    DenseRetriever(vector_store, embedding_service, settings=settings).retrieve(
+        "query", document_ids=["doc-1", "doc-2"]
+    )
+
+    vector_store.search.assert_called_once_with([0.1], 5, document_ids=["doc-1", "doc-2"])

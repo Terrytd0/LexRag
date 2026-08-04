@@ -41,12 +41,23 @@ class HybridRetriever:
         self._sparse = sparse_retriever
         self._settings = settings or get_settings()
 
-    async def retrieve(self, query: str, top_k: int | None = None) -> list[RetrievalResult]:
-        """Run dense + sparse retrieval in parallel and return the RRF-merged ranking."""
+    async def retrieve(
+        self,
+        query: str,
+        top_k: int | None = None,
+        document_ids: list[str] | None = None,
+    ) -> list[RetrievalResult]:
+        """Run dense + sparse retrieval in parallel and return the RRF-merged ranking.
+
+        `document_ids`, if given, restricts both dense and sparse search to
+        those documents (`POST /query`'s document-scoped filter) -- passed
+        straight through to `DenseRetriever`/`SparseRetriever`, which apply
+        it as a native store-level filter rather than post-filtering.
+        """
         start = time.monotonic()
         dense_results, sparse_results = await asyncio.gather(
-            asyncio.to_thread(self._dense.retrieve, query, top_k),
-            asyncio.to_thread(self._sparse.retrieve, query, top_k),
+            asyncio.to_thread(self._dense.retrieve, query, top_k, document_ids),
+            asyncio.to_thread(self._sparse.retrieve, query, top_k, document_ids),
         )
         merged = reciprocal_rank_fusion(dense_results, sparse_results, k=self._settings.rrf_k)
 

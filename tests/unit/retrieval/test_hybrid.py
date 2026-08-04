@@ -41,8 +41,23 @@ async def test_retrieve_calls_dense_and_sparse_with_the_same_query_and_top_k(
     retriever = HybridRetriever(dense, sparse, settings=settings)
     await retriever.retrieve("query", top_k=10)
 
-    dense.retrieve.assert_called_once_with("query", 10)
-    sparse.retrieve.assert_called_once_with("query", 10)
+    dense.retrieve.assert_called_once_with("query", 10, None)
+    sparse.retrieve.assert_called_once_with("query", 10, None)
+
+
+async def test_retrieve_passes_document_ids_through_to_dense_and_sparse(
+    settings: Settings,
+) -> None:
+    dense = MagicMock(name="dense")
+    dense.retrieve.return_value = []
+    sparse = MagicMock(name="sparse")
+    sparse.retrieve.return_value = []
+
+    retriever = HybridRetriever(dense, sparse, settings=settings)
+    await retriever.retrieve("query", document_ids=["doc-1", "doc-2"])
+
+    dense.retrieve.assert_called_once_with("query", None, ["doc-1", "doc-2"])
+    sparse.retrieve.assert_called_once_with("query", None, ["doc-1", "doc-2"])
 
 
 async def test_retrieve_returns_rrf_merged_results(settings: Settings) -> None:

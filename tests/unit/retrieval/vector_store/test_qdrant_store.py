@@ -140,8 +140,90 @@ def test_search_returns_chunks_reconstructed_from_payload_with_scores(
 
     assert results == [(chunk, 0.87)]
     client.query_points.assert_called_once_with(
-        collection_name="test_collection", query=[0.1, 0.2, 0.3], limit=5
+        collection_name="test_collection", query=[0.1, 0.2, 0.3], limit=5, query_filter=None
     )
+
+
+def test_search_without_document_ids_passes_no_filter(
+    client: MagicMock, embedding_service: MagicMock, settings: Settings
+) -> None:
+    client.collection_exists.return_value = True
+    response = MagicMock()
+    response.points = []
+    client.query_points.return_value = response
+
+    store = QdrantVectorStore(client, embedding_service, settings=settings)
+    store.search([0.1, 0.2, 0.3], top_k=5)
+
+    assert client.query_points.call_args.kwargs["query_filter"] is None
+
+
+def test_search_with_document_ids_builds_a_doc_id_match_any_filter(
+    client: MagicMock, embedding_service: MagicMock, settings: Settings
+) -> None:
+    client.collection_exists.return_value = True
+    response = MagicMock()
+    response.points = []
+    client.query_points.return_value = response
+
+    store = QdrantVectorStore(client, embedding_service, settings=settings)
+    store.search([0.1, 0.2, 0.3], top_k=5, document_ids=["doc-1", "doc-2"])
+
+    query_filter = client.query_points.call_args.kwargs["query_filter"]
+    assert isinstance(query_filter, models.Filter)
+    assert isinstance(query_filter.must, list)
+    condition = query_filter.must[0]
+    assert isinstance(condition, models.FieldCondition)
+    assert condition.key == "doc_id"
+    assert condition.match == models.MatchAny(any=["doc-1", "doc-2"])
+
+
+def test_search_with_empty_document_ids_passes_no_filter(
+    client: MagicMock, embedding_service: MagicMock, settings: Settings
+) -> None:
+    client.collection_exists.return_value = True
+    response = MagicMock()
+    response.points = []
+    client.query_points.return_value = response
+
+    store = QdrantVectorStore(client, embedding_service, settings=settings)
+    store.search([0.1, 0.2, 0.3], top_k=5, document_ids=[])
+
+    assert client.query_points.call_args.kwargs["query_filter"] is None
+
+
+def test_index_chunks_creates_a_doc_id_payload_index_when_collection_is_missing(
+    client: MagicMock, embedding_service: MagicMock, settings: Settings
+) -> None:
+    store = QdrantVectorStore(client, embedding_service, settings=settings)
+
+    store.index_chunks([_chunk("doc-1:0")])
+
+    client.create_payload_index.assert_called_once_with(
+        collection_name="test_collection",
+        field_name="doc_id",
+        field_schema=models.PayloadSchemaType.KEYWORD,
+    )
+
+
+def test_delete_document_deletes_points_matching_doc_id(
+    client: MagicMock, embedding_service: MagicMock, settings: Settings
+) -> None:
+    client.collection_exists.return_value = True
+    store = QdrantVectorStore(client, embedding_service, settings=settings)
+
+    store.delete_document("doc-1")
+
+    client.delete.assert_called_once()
+    kwargs = client.delete.call_args.kwargs
+    assert kwargs["collection_name"] == "test_collection"
+    points_selector = kwargs["points_selector"]
+    assert isinstance(points_selector, models.FilterSelector)
+    assert isinstance(points_selector.filter.must, list)
+    condition = points_selector.filter.must[0]
+    assert isinstance(condition, models.FieldCondition)
+    assert condition.key == "doc_id"
+    assert condition.match == models.MatchValue(value="doc-1")
 
 
 def test_point_id_is_deterministic_and_unique_per_chunk_id() -> None:

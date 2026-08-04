@@ -54,8 +54,15 @@ class Settings(BaseSettings):
     # --- Hybrid retrieval ---
     rrf_k: int = Field(default=60, alias="RRF_K")
     retrieval_top_k: int = Field(default=50, alias="RETRIEVAL_TOP_K")
+    # Candidates taken from the RRF-fused ranking before cross-encoder
+    # reranking -- distinct from rerank_top_k (which trims the reranker's
+    # *output*). The cross-encoder is the dominant cost in query latency
+    # (~3.4s/candidate observed on CPU), so this bounds how many candidates
+    # pay that cost, independent of retrieval_top_k/RRF recall.
+    rerank_input_top_k: int = Field(default=20, alias="RERANK_INPUT_TOP_K")
     rerank_top_k: int = Field(default=8, alias="RERANK_TOP_K")
     rerank_model: str = Field(default="BAAI/bge-reranker-v2-m3", alias="RERANK_MODEL")
+    rerank_batch_size: int = Field(default=16, alias="RERANK_BATCH_SIZE")
 
     # --- Generation ---
     llm_provider: str = Field(default="openai", alias="LLM_PROVIDER")

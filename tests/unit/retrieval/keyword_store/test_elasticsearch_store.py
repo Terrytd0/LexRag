@@ -120,6 +120,20 @@ def test_search_returns_chunks_with_bm25_scores(client: MagicMock, settings: Set
     )
 
 
+def test_delete_document_deletes_by_doc_id_term_query(
+    client: MagicMock, settings: Settings
+) -> None:
+    client.indices.exists.return_value = True
+    client.delete_by_query.return_value = {"deleted": 3}
+    store = ElasticsearchKeywordStore(client, settings=settings)
+
+    store.delete_document("doc-1")
+
+    client.delete_by_query.assert_called_once_with(
+        index="test_index", query={"term": {"doc_id": "doc-1"}}
+    )
+
+
 def test_search_returns_empty_list_when_no_hits(client: MagicMock, settings: Settings) -> None:
     client.indices.exists.return_value = True
     client.search.return_value = {"hits": {"hits": []}}
@@ -127,3 +141,38 @@ def test_search_returns_empty_list_when_no_hits(client: MagicMock, settings: Set
     store = ElasticsearchKeywordStore(client, settings=settings)
 
     assert store.search("no matches", top_k=5) == []
+
+
+def test_search_with_document_ids_adds_a_bool_terms_filter(
+    client: MagicMock, settings: Settings
+) -> None:
+    client.indices.exists.return_value = True
+    client.search.return_value = {"hits": {"hits": []}}
+
+    store = ElasticsearchKeywordStore(client, settings=settings)
+    store.search("termination clause", top_k=5, document_ids=["doc-1", "doc-2"])
+
+    client.search.assert_called_once_with(
+        index="test_index",
+        query={
+            "bool": {
+                "must": [{"match": {"text": "termination clause"}}],
+                "filter": [{"terms": {"doc_id": ["doc-1", "doc-2"]}}],
+            }
+        },
+        size=5,
+    )
+
+
+def test_search_with_empty_document_ids_uses_unfiltered_query(
+    client: MagicMock, settings: Settings
+) -> None:
+    client.indices.exists.return_value = True
+    client.search.return_value = {"hits": {"hits": []}}
+
+    store = ElasticsearchKeywordStore(client, settings=settings)
+    store.search("termination clause", top_k=5, document_ids=[])
+
+    client.search.assert_called_once_with(
+        index="test_index", query={"match": {"text": "termination clause"}}, size=5
+    )

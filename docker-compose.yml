@@ -20,8 +20,19 @@ services:
       MONGODB_URI: mongodb://mongo:27017
       QDRANT_URL: http://qdrant:6333
       ELASTICSEARCH_URL: http://elasticsearch:9200
+      # Pinned explicitly (rather than relying on the implicit ~/.cache/huggingface
+      # default) so the huggingface_cache volume below always mounts the exact path
+      # sentence-transformers/huggingface_hub actually read from -- without this,
+      # every `docker compose build`/container recreation re-downloads bge-m3 (~2.3GB)
+      # and bge-reranker-v2-m3 (~1-2GB) from HuggingFace Hub from an empty container
+      # filesystem, which is what made the Day 4 production-hardening pass's container
+      # rebuild take several minutes. No code change needed elsewhere:
+      # EmbeddingService/CrossEncoderReranker just call SentenceTransformer(model_name)/
+      # CrossEncoder(model_name), and both read HF_HOME themselves.
+      HF_HOME: /app/.cache/huggingface
     volumes:
       - ./data:/app/data
+      - huggingface_cache:/app/.cache/huggingface
     depends_on:
       mongo:
         condition: service_healthy
@@ -89,3 +100,8 @@ volumes:
   mongo_data:
   qdrant_data:
   es_data:
+  # Persists downloaded model weights (bge-m3, bge-reranker-v2-m3) across
+  # `docker compose build`/container recreation -- first startup downloads
+  # from HuggingFace Hub as before; every subsequent rebuild/restart reuses
+  # this volume instead of re-downloading. No manual copying needed.
+  huggingface_cache:

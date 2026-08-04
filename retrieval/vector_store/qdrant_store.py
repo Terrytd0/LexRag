@@ -73,6 +73,14 @@ class QdrantVectorStore:
                     distance=distance,
                 ),
             )
+            # Indexed so `search`'s document_ids filter (Sprint 5 Day 4
+            # hardening pass, document-scoped queries) doesn't force an
+            # unindexed full-payload scan as the collection grows.
+            self._client.create_payload_index(
+                collection_name=self._collection,
+                field_name="doc_id",
+                field_schema=models.PayloadSchemaType.KEYWORD,
+            )
             logger.info(
                 "qdrant collection created collection=%s size=%d distance=%s",
                 self._collection,
@@ -109,12 +117,51 @@ class QdrantVectorStore:
             len(chunks),
         )
 
-    def search(self, query_vector: list[float], top_k: int) -> list[tuple[Chunk, float]]:
-        """Return up to `top_k` nearest chunks to `query_vector`, most similar first."""
+    def search(
+        self,
+        query_vector: list[float],
+        top_k: int,
+        document_ids: list[str] | None = None,
+    ) -> list[tuple[Chunk, float]]:
+        """Return up to `top_k` nearest chunks to `query_vector`, most similar first.
+
+        `document_ids`, if given, restricts the search to chunks whose
+        `doc_id` payload field is in that list (document-scoped queries,
+        `POST /query`'s `document_ids` filter) via a native Qdrant filter --
+        narrowing happens in the ANN search itself, not by post-filtering
+        results.
+        """
         self._ensure_collection()
+        query_filter = (
+            models.Filter(
+                must=[models.FieldCondition(key="doc_id", match=models.MatchAny(any=document_ids))]
+            )
+            if document_ids
+            else None
+        )
         response = self._client.query_points(
             collection_name=self._collection,
             query=query_vector,
             limit=top_k,
+            query_filter=query_filter,
         )
         return [(Chunk.model_validate(point.payload), point.score) for point in response.points]
+
+    def delete_document(self, doc_id: str) -> None:
+        """Delete every point whose `doc_id` payload field matches `doc_id`.
+
+        No-op (Qdrant returns success either way) if `doc_id` has no points --
+        `IngestionPipeline.delete` doesn't need to check existence per store.
+        """
+        self._ensure_collection()
+        self._client.delete(
+            collection_name=self._collection,
+            points_selector=models.FilterSelector(
+                filter=models.Filter(
+                    must=[
+                        models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))
+                    ]
+                )
+            ),
+        )
+        logger.info("qdrant deletion complete collection=%s doc_id=%s", self._collection, doc_id)

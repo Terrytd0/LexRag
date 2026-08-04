@@ -110,15 +110,50 @@ class ElasticsearchKeywordStore:
             len(chunks),
         )
 
-    def search(self, query: str, top_k: int) -> list[tuple[Chunk, float]]:
-        """Return up to `top_k` BM25 matches for `query` against chunk text, best first."""
+    def search(
+        self,
+        query: str,
+        top_k: int,
+        document_ids: list[str] | None = None,
+    ) -> list[tuple[Chunk, float]]:
+        """Return up to `top_k` BM25 matches for `query` against chunk text, best first.
+
+        `document_ids`, if given, restricts the search to chunks whose
+        `doc_id` field (indexed as `keyword` -- see `_INDEX_MAPPINGS`) is in
+        that list, via a `bool` filter clause (document-scoped queries,
+        `POST /query`'s `document_ids` filter). Filter clauses don't affect
+        BM25 scoring, only which documents the query runs against.
+        """
         self._ensure_index()
+        es_query: dict[str, Any] = {"match": {"text": query}}
+        if document_ids:
+            es_query = {
+                "bool": {
+                    "must": [{"match": {"text": query}}],
+                    "filter": [{"terms": {"doc_id": document_ids}}],
+                }
+            }
         response = self._client.search(
             index=self._index,
-            query={"match": {"text": query}},
+            query=es_query,
             size=top_k,
         )
         return [
             (Chunk.model_validate(hit["_source"]), hit["_score"])
             for hit in response["hits"]["hits"]
         ]
+
+    def delete_document(self, doc_id: str) -> None:
+        """Delete every chunk whose `doc_id` field matches `doc_id`.
+
+        No-op if `doc_id` has no chunks -- `IngestionPipeline.delete` doesn't
+        need to check existence per store.
+        """
+        self._ensure_index()
+        result = self._client.delete_by_query(index=self._index, query={"term": {"doc_id": doc_id}})
+        logger.info(
+            "elasticsearch deletion complete index=%s doc_id=%s deleted_count=%s",
+            self._index,
+            doc_id,
+            result.get("deleted"),
+        )

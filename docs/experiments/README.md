@@ -15,8 +15,10 @@ answer: **Hypothesis, Configuration, Dataset, Metrics, Results, Decision,
 Next Steps.** A logged experiment with no stated hypothesis or decision
 isn't useful later -- it's just an unlabeled table of numbers.
 
-- `retrieval_debugging.md` (Day 3) -- top-k BM25 vs. vector result
-  comparisons, overlap analysis, and latency measurements that informed the
-  RRF `k` and `retrieval_top_k` defaults in `configs/settings.py`.
+- `retrieval_debugging.md` (Day 3, appended Day 4) -- top-k BM25 vs. vector
+  result comparisons, overlap analysis, and latency measurements that
+  informed the RRF `k` and `retrieval_top_k` defaults in
+  `configs/settings.py`; Day 4 appended live query-latency profiling and the
+  `RERANK_INPUT_TOP_K` benchmark.
 - `evaluation_notes.md` (Day 5) -- baseline metric scores and the chunking /
   retrieval / prompt changes made in response to them.

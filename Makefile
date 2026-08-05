@@ -6,7 +6,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install sync run test test-cov lint format format-check typecheck check clean
+.PHONY: help install sync run evaluate test test-cov lint format format-check typecheck check clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -21,6 +21,9 @@ sync: ## Sync the .venv to exactly match pyproject.toml / uv.lock
 
 run: ## Run the API locally (uv run python -m api; reads APP_HOST/APP_PORT from .env)
 	uv run python -m api
+
+evaluate: ## Run the full golden-dataset evaluation (needs the live stack + OPENAI_API_KEY)
+	uv run python scripts/run_evaluation.py
 
 test: ## Run the unit test suite
 	uv run pytest

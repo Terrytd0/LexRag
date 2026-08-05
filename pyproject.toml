@@ -47,6 +47,13 @@ dependencies = [
     # --- Evaluation ---
     "ragas>=0.2.0",
     "deepeval>=1.4.0",
+    # ragas 0.4.x unconditionally imports langchain_community.chat_models.vertexai
+    # at module load (ragas/llms/base.py) even though we never use a Vertex AI
+    # LLM -- that submodule was removed in langchain-community>=0.4, breaking
+    # `import ragas` outright. Pinned to the last 0.3.x release (compatible with
+    # our langchain-core>=1.x via other deps) until upstream ragas fixes the
+    # import guard. See docs/experiments/evaluation_notes.md.
+    "langchain-community>=0.3.27,<0.4",
 ]
 
 [project.optional-dependencies]

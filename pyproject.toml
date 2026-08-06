@@ -18,32 +18,26 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
     "python-multipart>=0.0.9",  # required by FastAPI for file uploads (POST /upload)
-
     # --- Data / settings ---
     "pydantic>=2.9.0",
     "pydantic-settings>=2.5.0",
     "python-dotenv>=1.0.1",
-
     # --- Document processing ---
     "pypdf>=4.3.0",
     "tiktoken>=0.8.0",
-
     # --- Embeddings / reranking ---
     "sentence-transformers>=3.1.0",
     "transformers>=4.44.0",
     "torch>=2.4.0",
-
     # --- Storage clients ---
     "pymongo>=4.9.0",
     "qdrant-client>=1.11.0",
     # Pinned <9: elasticsearch-py 9.x sends a "compatible-with=9" Accept header
     # that the docker-compose 8.15.0 server rejects outright (only 7/8 accepted).
     "elasticsearch>=8.15.0,<9",
-
     # --- Generation (provider-agnostic interface, OpenAI-compatible default) ---
     "openai>=1.50.0",
     "httpx>=0.27.0",
-
     # --- Evaluation ---
     "ragas>=0.2.0",
     "deepeval>=1.4.0",
@@ -54,6 +48,7 @@ dependencies = [
     # our langchain-core>=1.x via other deps) until upstream ragas fixes the
     # import guard. See docs/experiments/evaluation_notes.md.
     "langchain-community>=0.3.27,<0.4",
+    "optimum[onnxruntime]>=2.1.0",
 ]
 
 [project.optional-dependencies]

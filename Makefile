@@ -6,7 +6,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install sync run evaluate test test-cov lint format format-check typecheck check clean
+.PHONY: help install sync run evaluate evaluate-gate test test-cov lint format format-check typecheck check clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -24,6 +24,9 @@ run: ## Run the API locally (uv run python -m api; reads APP_HOST/APP_PORT from 
 
 evaluate: ## Run the full golden-dataset evaluation (needs the live stack + OPENAI_API_KEY)
 	uv run python scripts/run_evaluation.py
+
+evaluate-gate: ## Check the most recent evaluation report against docs/01-requirements.md §7's thresholds (FR-12)
+	uv run python scripts/evaluation_gate.py
 
 test: ## Run the unit test suite
 	uv run pytest

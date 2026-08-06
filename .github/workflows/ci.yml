@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -50,3 +51,49 @@ jobs:
 
       - name: pytest
         run: uv run pytest
+
+  evaluation-gate:
+    name: Evaluation quality gate (FR-12)
+    needs: quality
+    # Manual trigger only, on a self-hosted runner with the golden-set corpus
+    # already seeded into a live Mongo/Qdrant/Elasticsearch stack
+    # (`docker compose up -d mongo qdrant elasticsearch` +
+    # `uv run python scripts/seed_corpus.py`). The corpus itself
+    # (`data/raw/sample_contracts/`) is real, licensed contract text and is
+    # deliberately gitignored -- see that directory's README -- so a
+    # GitHub-hosted runner has no way to reproduce it from a checkout alone.
+    # See docs/01-requirements.md §7.6 and docs/experiments/ for the recorded
+    # degrade/restore demonstration of this gate against a real report.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, lexrag-evaluation]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Add uv to PATH
+        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Install dependencies (fails if uv.lock is stale)
+        run: uv sync --extra dev --locked
+
+      - name: Run golden-dataset evaluation
+        run: uv run python scripts/run_evaluation.py
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Enforce evaluation quality gate (FR-12)
+        run: uv run python scripts/evaluation_gate.py
+
+      - name: Upload evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evaluation-report
+          path: evaluation/reports/latest.*
+          retention-days: 90

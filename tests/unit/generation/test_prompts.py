@@ -3,8 +3,7 @@ from __future__ import annotations
 from configs.settings import Settings
 from domain.chunk import Chunk
 from domain.retrieval import RetrievalResult
-from generation.prompt_versions import LEGAL_RAG_V1
-from generation.prompts import PromptBuilder
+from generation.prompts import ACTIVE_PROMPT_VERSION, PromptBuilder
 
 
 def _result(chunk_id: str, text: str = "evidence text") -> RetrievalResult:
@@ -78,8 +77,8 @@ def test_build_uses_the_active_prompt_version() -> None:
 
     prompt = builder.build("question", [_result("a")])
 
-    assert prompt.version == LEGAL_RAG_V1.name
-    assert prompt.system == LEGAL_RAG_V1.system
+    assert prompt.version == ACTIVE_PROMPT_VERSION.name
+    assert prompt.system == ACTIVE_PROMPT_VERSION.system
 
 
 def test_context_window_defaults_to_rerank_top_k() -> None:

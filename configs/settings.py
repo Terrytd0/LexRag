@@ -57,12 +57,23 @@ class Settings(BaseSettings):
     # Candidates taken from the RRF-fused ranking before cross-encoder
     # reranking -- distinct from rerank_top_k (which trims the reranker's
     # *output*). The cross-encoder is the dominant cost in query latency
-    # (~3.4s/candidate observed on CPU), so this bounds how many candidates
-    # pay that cost, independent of retrieval_top_k/RRF recall.
-    rerank_input_top_k: int = Field(default=20, alias="RERANK_INPUT_TOP_K")
+    # (~2.4s/candidate observed on CPU), so this bounds how many candidates
+    # pay that cost, independent of retrieval_top_k/RRF recall. Reduced from
+    # 20 to 12 on Sprint 5 Day 6 after validating against the real golden set
+    # (scripts/rerank_input_topk_validation.py): 0/22 positive cases lost
+    # their expected document from the reranked top rerank_top_k at either
+    # value, for a ~38% reranker latency cut -- see
+    # docs/experiments/evaluation_notes_day6.md.
+    rerank_input_top_k: int = Field(default=12, alias="RERANK_INPUT_TOP_K")
     rerank_top_k: int = Field(default=8, alias="RERANK_TOP_K")
     rerank_model: str = Field(default="BAAI/bge-reranker-v2-m3", alias="RERANK_MODEL")
     rerank_batch_size: int = Field(default=16, alias="RERANK_BATCH_SIZE")
+    # Inference backend for the cross-encoder ("torch", "onnx", or "openvino") --
+    # sentence-transformers loads the same model weights through whichever
+    # backend is named here; changing this never changes rerank quality, only
+    # execution speed. See docs/adr/001-reranker-onnx-backend.md for the
+    # measured comparison behind the current default.
+    rerank_backend: str = Field(default="torch", alias="RERANK_BACKEND")
 
     # --- Generation ---
     llm_provider: str = Field(default="openai", alias="LLM_PROVIDER")

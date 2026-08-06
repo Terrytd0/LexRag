@@ -1,9 +1,13 @@
 """Prompt assembly for citation-grounded generation.
 
-Active prompt version: `LEGAL_RAG_V1` (`generation.prompt_versions`). Bump
-`ACTIVE_PROMPT_VERSION` below to switch templates during Day 5 evaluation --
-the emitted `Prompt.version` records exactly which template produced a given
-answer, so prompt experiments stay reproducible.
+Active prompt version: `LEGAL_RAG_V2` (`generation.prompt_versions`) -- promoted
+Sprint 5 Day 6 after a measured before/after against the golden set found `V1`
+accepting two negative cases whose retrieved evidence was topically real but
+didn't answer the specific question asked (see
+`docs/experiments/evaluation_notes_day6.md`). Bump `ACTIVE_PROMPT_VERSION`
+below to switch templates -- the emitted `Prompt.version` records exactly
+which template produced a given answer, so prompt experiments stay
+reproducible.
 
 Depends only on `domain.retrieval.RetrievalResult` and `configs.settings` --
 never on retrieval stores.
@@ -16,11 +20,11 @@ from dataclasses import dataclass
 
 from configs.settings import Settings, get_settings
 from domain.retrieval import RetrievalResult
-from generation.prompt_versions import LEGAL_RAG_V1, PromptTemplate
+from generation.prompt_versions import LEGAL_RAG_V2, PromptTemplate
 
 logger = logging.getLogger(__name__)
 
-ACTIVE_PROMPT_VERSION: PromptTemplate = LEGAL_RAG_V1
+ACTIVE_PROMPT_VERSION: PromptTemplate = LEGAL_RAG_V2
 
 _NO_EVIDENCE_PLACEHOLDER = "(no evidence retrieved)"
 

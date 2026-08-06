@@ -9,4 +9,9 @@ part of the harness's own logic -- see its docstring. `cost_tracking.py` is
 token-usage/cost instrumentation used only by the one-off
 `scripts/run_model_comparison.py`, not the regular harness (which tracks no
 cost) -- see `docs/experiments/evaluation_notes_gpt54nano.md`.
+
+`gate.py` (Sprint 5 Day 6, FR-12) is the CI evaluation quality gate: pure
+pass/fail logic against an already-generated `EvaluationReport`, no pipeline
+execution of its own. `scripts/evaluation_gate.py` is its CLI entrypoint
+(`make evaluate-gate`). See `docs/experiments/evaluation_notes_day6.md`.
 """

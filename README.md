@@ -5,12 +5,16 @@ generation system that answers questions over contracts and case filings
 with traceable citations, and refuses to answer when the evidence isn't
 there.
 
-> **Status:** Sprint 5, Days 1–5 complete, plus a Day 4 production-hardening
+> **Status:** Sprint 5, Days 1–6 complete, plus a Day 4 production-hardening
 > pass (duplicate detection, document browser/delete, document-scoped
 > queries, persistent model cache). Ingestion, hybrid retrieval, reranking,
-> citation-grounded generation, the full REST API, and the golden-dataset
-> evaluation harness are implemented and Dockerized end-to-end. CI quality
-> gate wiring (Day 6) is next (see [Roadmap](#roadmap)).
+> citation-grounded generation, the full REST API, the golden-dataset
+> evaluation harness, and a wired-and-demonstrated CI evaluation quality gate
+> (FR-12) are implemented and Dockerized end-to-end. End-to-end query latency
+> was cut nearly in half on Day 6 (51.2s → 26.3s avg); refusal precision on
+> adversarial queries improved but has not yet reached the documented 100%
+> target — see [Known Limitations](#known-limitations) and
+> [Roadmap](#roadmap).
 
 ## Overview
 
@@ -63,8 +67,13 @@ sync.
   one or more specific documents instead of the whole corpus.
 - Golden-dataset evaluation harness (RAGAS/DeepEval) reporting recall@K,
   precision@K, faithfulness, refusal accuracy, and per-stage latency, with
-  automatic failure-stage classification. Not yet wired into CI as a
-  quality gate (Day 6 — see [Roadmap](#roadmap)).
+  automatic failure-stage classification.
+- CI evaluation quality gate (FR-12) — `evaluation/gate.py` +
+  `scripts/evaluation_gate.py` (`make evaluate-gate`) fail the build if
+  recall@10, precision@5, faithfulness, or negative-case refusal fall below
+  `docs/01-requirements.md` §7's thresholds. Wired into
+  `.github/workflows/ci.yml` and demonstrated failing and passing against
+  real runs — see [CI Evaluation Gate](#ci-evaluation-gate).
 - Fully Dockerized local stack (API + MongoDB + Qdrant + Elasticsearch),
   including a persistent volume for downloaded embedding/reranker model
   weights so rebuilding the API image doesn't re-download them.
@@ -149,17 +158,23 @@ use most:
 | `make lint` | Lint with Ruff |
 | `make format` | Auto-format with Ruff (rewrites files) |
 | `make check` | Full quality gate: format check + lint + mypy + tests — what CI runs |
+| `make evaluate` | Run the golden-dataset evaluation harness (needs the live stack + `OPENAI_API_KEY`) |
+| `make evaluate-gate` | Check the most recent evaluation report against `docs/01-requirements.md` §7's thresholds (FR-12); exits non-zero on failure |
 
 Every target just wraps a `uv run ...` command, so if `make` isn't available
 (there's no native `make` on plain Windows cmd/PowerShell — use Git Bash,
 WSL, or install one), open the `Makefile` and run the underlying command
 directly.
 
-CI (`.github/workflows/ci.yml`) runs on every push and pull request:
-`uv sync --locked`, then `ruff check`, `ruff format --check`, `mypy`, and
-`pytest`, in that order — identical to `make check`. A `uv.lock` mismatch
-with `pyproject.toml` fails the build immediately, before any other check
-runs.
+CI (`.github/workflows/ci.yml`) has two jobs. `quality` runs on every push
+and pull request: `uv sync --locked`, then `ruff check`, `ruff format
+--check`, `mypy`, and `pytest`, in that order — identical to `make check`. A
+`uv.lock` mismatch with `pyproject.toml` fails the build immediately, before
+any other check runs. `evaluation-gate` (FR-12) runs `make evaluate` +
+`make evaluate-gate` on a manual (`workflow_dispatch`) trigger against a
+self-hosted runner with the golden corpus pre-seeded — see
+[CI Evaluation Gate](#ci-evaluation-gate) for why it isn't automatic on
+every push.
 
 ## Project Structure
 
@@ -190,13 +205,16 @@ layout and engineering conventions.
 | 3 | Hybrid retrieval — Qdrant + Elasticsearch, RRF merge | ✅ Done |
 | 4 | Cited generation & API — reranker, `/query`, `/upload`, plus a production-hardening pass (dedup, document browser/delete, document-scoped queries, persistent model cache) | ✅ Done |
 | 5 | Evaluation & quality — golden dataset (7 real SEC-filed contracts, 30 Q/A cases), retrieval/generation/refusal metrics, error analysis | ✅ Done |
-| 6 | Hardening & portfolio — CI quality gate, full Docker stack, walkthrough | ⬜ Planned |
+| 6 | Hardening & portfolio — CI evaluation quality gate (FR-12, demonstrated failing/passing), refusal-prompt fix, reranker latency optimization, final docs | ✅ Done |
 
 Lint/type/test CI (`.github/workflows/ci.yml`) and the `Makefile` command
-surface landed early, as infrastructure hardening ahead of Day 2. Day 6 adds
-the remaining piece: wiring the metrics this evaluation harness already
-produces into an actual CI quality gate (FR-12) that fails a build when
-retrieval/generation metrics regress.
+surface landed early, as infrastructure hardening ahead of Day 2. Day 6 wired
+the metrics this evaluation harness already produces into an actual CI
+quality gate (FR-12), demonstrated it failing against a real run and against
+deliberately degraded configurations, cut end-to-end query latency by ~49%,
+and made a measured (partial) improvement to refusal precision. Full
+methodology and numbers:
+[`docs/experiments/evaluation_notes_day6.md`](docs/experiments/evaluation_notes_day6.md).
 
 ## Evaluation
 
@@ -237,6 +255,7 @@ Reproduce locally with:
 docker compose up -d mongo qdrant elasticsearch
 uv run python scripts/seed_corpus.py     # once, to seed the golden dataset's corpus
 make evaluate                            # or: uv run python scripts/run_evaluation.py
+make evaluate-gate                       # check the report against §7's thresholds (FR-12)
 ```
 
 Full methodology, dataset design rationale, and baseline results:
@@ -244,33 +263,56 @@ Full methodology, dataset design rationale, and baseline results:
 
 ### Benchmark numbers
 
-Baseline run 2026-08-05 against the 7-document real-contract corpus
-described in `docs/experiments/evaluation_notes.md` (30 golden cases; LLM:
-`gpt-5.6-luna`, a one-off substitution for this run — see that doc for why):
+**Day 5 baseline** (2026-08-05, `gpt-5.6-luna` — a one-off substitution) vs.
+**Day 6 final** (2026-08-06, `gpt-4.1-mini` — the project's actual configured
+default), same 7-document real-contract corpus, same 30 golden cases. Day 6
+changed two things from the Day 5 config: `RERANK_INPUT_TOP_K` 20 → 12
+(validated against this golden set, zero measured recall cost — see
+`docs/adr/001-reranker-onnx-backend.md` and
+`docs/experiments/evaluation_notes_day6.md` §2) and the active generation
+prompt `LEGAL_RAG_V1` → `LEGAL_RAG_V2` (a targeted refusal fix, §3 of that
+doc):
 
-| Metric | Value | vs. `docs/01-requirements.md` §7 |
-|---|---|---|
-| Recall@10 (hybrid) | 1.00 | ✅ ≥ 0.85 |
-| Precision@5 (hybrid) | 0.88 | ✅ ≥ 0.70 |
-| Faithfulness | 0.95 | ✅ ≥ 0.90 |
-| Context Precision | 0.65 | no documented threshold |
-| Context Recall | 0.96 | no documented threshold |
-| Answer Relevancy | 0.80 | no documented threshold |
-| Refusal accuracy | 93.33% (28/30) | — |
-| Negative-case refusal | 75% (6/8, 2 false acceptances) | ❌ target is 100% |
-| Avg end-to-end latency | 56.4s | ❌ NFR-1 target ≤ 6s (P95) — reranker-bound, 94.9% of total |
+| Metric | Day 5 baseline | Day 6 final | vs. `docs/01-requirements.md` §7 |
+|---|---|---|---|
+| Recall@10 (hybrid) | 1.00 | 1.00 | ✅ ≥ 0.85 |
+| Precision@5 (hybrid) | 0.88 | 0.88 | ✅ ≥ 0.70 |
+| Faithfulness | 0.95 | 0.98 | ✅ ≥ 0.90 |
+| Context Precision | 0.65 | 0.79 | no documented threshold |
+| Context Recall | 0.96 | 1.00 | no documented threshold |
+| Answer Relevancy | 0.80 | 0.94 | no documented threshold |
+| Refusal accuracy | 93.33% (28/30) | 90.00% (27/30) | — |
+| Negative-case false acceptances | 2 | **2** | ❌ target is 0 (100% refusal) |
+| Avg reranker latency | 53.5s | **23.4s** | — |
+| Avg end-to-end latency | 56.4s | **26.3s (-53%)** | ❌ NFR-1 target ≤ 6s (P95) — still reranker-bound |
 
-Two real gaps, neither tuned this session per the optimization policy
-(measure first, change later with its own before/after) — see
-`docs/experiments/evaluation_notes.md`'s Observations for root-cause analysis
-of both: negative-case refusal misses 100% (generation-stage judgment issue,
-not retrieval or threshold), and end-to-end latency is dominated almost
-entirely by the CPU-only cross-encoder reranker (a known, previously-profiled
-bottleneck, confirmed here at full golden-dataset scale).
+**Latency: cut by more than half.** `RERANK_INPUT_TOP_K=12` (validated
+against every positive case's expected document staying in the reranked top
+8, not just a single-query heuristic) took avg reranker latency from 53.5s
+to 23.4s. An ONNX Runtime backend for the same model was also measured and
+**rejected** — 1.02x speedup, not worth the added dependency
+(`docs/adr/001-reranker-onnx-backend.md`). Still ~9x over the NFR-1 P95
+budget — the reranker remains CPU-bound with no GPU/DirectML path on this
+machine.
 
-Full retrieval-strategy comparison, per-case detail, and failure list:
-`docs/experiments/evaluation_notes.md` and `evaluation/reports/latest.md`
-(regenerate with `make evaluate` — reports are generated output, gitignored).
+**Refusal: improved, not solved.** The Day 6 refusal-prompt fix
+(`LEGAL_RAG_V2`) fixed one of the three false acceptances measured against
+`gpt-4.1-mini` specifically (see
+`docs/experiments/evaluation_notes_day6.md` §4 for the `gpt-4.1-mini`
+before/after: 3 → 2), but the same two cases that were the *original* Day 5
+gap (`negative-nonexistent-01`, `negative-misleading-01`) survive — both
+generation-stage judgment failures on topically-real-but-non-answering
+evidence, not retrieval or threshold issues. **100% refusal on negative
+cases — the CI gate's one currently-failing criterion — is not yet met.**
+
+Full methodology, every intermediate measurement (including two failed
+latency/degradation hypotheses that are informative in their own right), and
+the CI gate demonstration: `docs/experiments/evaluation_notes_day6.md`.
+Day 5's original baseline and root-cause analysis:
+`docs/experiments/evaluation_notes.md`. Every report referenced above is
+preserved under `evaluation/reports/` (gitignored, filenames like
+`day6_after_gpt-4.1-mini.md` — regenerate the *current* run with
+`make evaluate`, which overwrites only `latest.md`/`latest.json`).
 
 A follow-up comparison against `gpt-5.4-nano` (same dataset/corpus/config,
 only the LLM changed) is in
@@ -278,6 +320,41 @@ only the LLM changed) is in
 — it also includes a repeat-run finding worth reading before trusting any
 single-run model comparison from this harness: re-running gpt-5.6-luna with
 nothing else changed shifted its own refusal accuracy from 93.33% to 100%.
+
+### CI Evaluation Gate
+
+`evaluation/gate.py` (pure pass/fail logic) + `scripts/evaluation_gate.py`
+(`make evaluate-gate`) check an already-generated report against
+`docs/01-requirements.md` §7's thresholds — `recall_at_10 >= 0.85`,
+`precision_at_5 >= 0.70`, `faithfulness >= 0.90`, and (FR-12, §7.5)
+`refusal_false_acceptances == 0` — and exit non-zero if any fail:
+
+```bash
+make evaluate       # run the pipeline, write evaluation/reports/latest.json
+make evaluate-gate  # check latest.json against the thresholds; exits 1 on failure
+```
+
+Wired into `.github/workflows/ci.yml` as an `evaluation-gate` job, gated on
+`workflow_dispatch` and a **self-hosted** runner rather than every push —
+the golden corpus (`data/raw/sample_contracts/`) is real, licensed contract
+text, deliberately gitignored (see that directory's README), so a
+GitHub-hosted runner has no way to reproduce it from a checkout alone. The
+job is real, tested YAML that runs correctly against a machine with the
+corpus already seeded (like the one this project was developed on) — see
+`docs/experiments/evaluation_notes_day6.md` §6 for why it isn't exercised by
+GitHub's own infrastructure today.
+
+**Demonstrated, on the record, both failing and passing** (§7.6):
+running the gate against the *actual, unmodified* system already fails
+(3 false acceptances on the pre-Day-6-fix baseline); three different
+retrieval-configuration degradations were tried, and the cleanest —
+pointing `QDRANT_COLLECTION`/`ELASTICSEARCH_INDEX` at fresh, never-indexed
+names — cleanly fails `recall_at_10`/`precision_at_5`/`faithfulness`
+(0.00/0.00/0.00), and reverting to the real names restores a pass on
+exactly those three checks. The refusal check stays failing throughout,
+including after reverting — a real, independent, currently-unresolved gap
+(above), not a bug in the gate. Full transcript:
+`docs/experiments/evaluation_notes_day6.md` §5.
 
 ### What the `confidence` field means (and doesn't)
 
@@ -313,6 +390,48 @@ for the full results, caveats, and concrete examples, including one answer
 that scored `confidence=0.92` while being completely unfaithful). Confidence
 reliably flags "nothing relevant was retrieved at all," but carries no
 further signal once something relevant is found.
+
+## Known Limitations
+
+Honest, measured gaps against `docs/01-requirements.md` §7's v1.0 acceptance
+bar — not resolved this sprint, tracked here rather than glossed over. Full
+detail: `docs/experiments/evaluation_notes_day6.md` §6.
+
+- **100% refusal on negative cases (§7.5) is not met.** 2 of 30 golden cases
+  are still answered when they should be refused
+  (`negative-nonexistent-01`, `negative-misleading-01`) — both cases where
+  retrieval returns real, topically-relevant evidence that doesn't actually
+  contain the specific fact the question asks about. A Day 6 prompt fix
+  (`LEGAL_RAG_V2`) closed one of three such failures measured against
+  `gpt-4.1-mini`; this specific pair predates that fix and needs a further,
+  more targeted iteration (see "Next steps" in the linked doc).
+- **P95 query latency (NFR-1, ≤ 6s) is not met.** Day 6 cut avg end-to-end
+  latency from 56.4s to 26.3s (-53%), but the CPU-only cross-encoder
+  reranker remains ~9x over budget. No GPU/DirectML/OpenVINO acceleration
+  path exists on the development machine; an ONNX Runtime backend was
+  measured and rejected (1.02x — not a real speedup, see
+  `docs/adr/001-reranker-onnx-backend.md`). Closing this gap needs either
+  GPU hardware or a more aggressive lever (e.g. INT8 quantization) that
+  hasn't been validated yet.
+- **The CI evaluation gate is not automated on GitHub-hosted runners.** The
+  golden corpus is real, licensed contract text, deliberately gitignored
+  (`data/raw/sample_contracts/README.md`) — a GitHub-hosted runner can't
+  reproduce it from a checkout. The `evaluation-gate` CI job is real and
+  correctly wired, but only runs against a self-hosted runner with the
+  corpus pre-seeded, triggered manually (`workflow_dispatch`), not on every
+  push/PR.
+- **Two of three deliberate retrieval-configuration degradations tried on
+  Day 6 didn't move recall@10/precision@5** — this 8-document corpus's
+  retrieval is more robust to configuration mistakes than expected; only an
+  artificially emptied vector/keyword store cleanly failed those specific
+  checks. A real demonstration of a *naturally occurring* retrieval
+  regression would need a larger, more heterogeneous corpus.
+- **Single-run measurements throughout.** RAGAS/DeepEval LLM-judge scores
+  are not perfectly deterministic run-to-run (`docs/architecture.md` §2.10);
+  a repeat run of an identical config previously shifted refusal accuracy
+  from 93.33% to 100% (`docs/experiments/evaluation_notes_gpt54nano.md`).
+  Treat every number in this README as directional, not a hypothesis-tested
+  result.
 
 ## Future Improvements
 

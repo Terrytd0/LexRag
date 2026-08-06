@@ -36,11 +36,12 @@ class CrossEncoderReranker:
         model_name: str,
         top_k: int,
         batch_size: int = 16,
+        backend: str = "torch",
     ) -> None:
         self._model_name = model_name
         self._top_k = top_k
         self._batch_size = batch_size
-        self._model = CrossEncoder(model_name)
+        self._model = CrossEncoder(model_name, backend=backend)
 
     def rerank(
         self, query: str, results: list[RetrievalResult], top_k: int | None = None
@@ -86,4 +87,5 @@ def get_reranker() -> CrossEncoderReranker:
         model_name=settings.rerank_model,
         top_k=settings.rerank_top_k,
         batch_size=settings.rerank_batch_size,
+        backend=settings.rerank_backend,
     )

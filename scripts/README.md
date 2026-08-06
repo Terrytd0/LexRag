@@ -19,6 +19,19 @@ application's existing settings, clients, and pipeline code.
   writes to `evaluation/reports/model_comparison/<model>/`, never touching
   `evaluation/reports/latest.*`. See
   `docs/experiments/evaluation_notes_gpt54nano.md`.
+- `evaluation_gate.py` (Day 6, also `make evaluate-gate`) -- check an
+  already-generated evaluation report (default: `evaluation/reports/latest.json`)
+  against `docs/01-requirements.md` §7's thresholds; exits non-zero on
+  failure. The CI mechanism behind FR-12. See
+  `docs/experiments/evaluation_notes_day6.md`.
+- `rerank_backend_benchmark.py` (Day 6, one-off) -- compares the
+  cross-encoder reranker's `torch` vs. `onnx` inference backends for
+  latency and score/ranking consistency against the golden set. Backing
+  `docs/adr/001-reranker-onnx-backend.md`.
+- `rerank_input_topk_validation.py` (Day 6, one-off) -- validates candidate
+  `RERANK_INPUT_TOP_K` values against real golden-set ground truth (does
+  every positive case's expected document survive reranking?). See
+  `docs/experiments/evaluation_notes_day6.md` §2b.
 
 Planned:
 

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LexRAG — Technical Architecture</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="doc">
+
+  <div class="cover-block">
+    <p class="cover-kicker">Technical Architecture Document</p>
+    <h1 class="cover-title">LexRAG<br>Technical Architecture</h1>
+    <p class="cover-subtitle">A legal contract &amp; case-law RAG platform — hybrid retrieval, cross-encoder reranking, citation-grounded refusal-aware generation, with quality enforced as a CI gate.</p>
+
+    <div class="meta-table">
+      <span class="meta-label">Project Type</span><span class="meta-value">Self-directed portfolio project. Not a production deployment — the golden corpus is real, licensed contract text, not client data.</span>
+      <span class="meta-label">Document</span><span class="meta-value">Technical Architecture Reference</span>
+      <span class="meta-label">Primary Source</span><span class="meta-value"><code>docs/architecture.md</code></span>
+      <span class="meta-label">Prepared</span><span class="meta-value">2026</span>
+      <span class="meta-label">Status</span><span class="meta-value">Sprint 5, Days 1–6 complete, plus Day 6 hardening</span>
+    </div>
+
+    <div class="badge-row">
+      <span class="badge">FastAPI</span>
+      <span class="badge alt2">Qdrant</span>
+      <span class="badge">Elasticsearch</span>
+      <span class="badge alt">RAGAS</span>
+      <span class="badge">MongoDB</span>
+      <span class="badge alt2">CI Quality Gate</span>
+    </div>
+
+    <div class="callout">
+      <strong>How to read this document:</strong> every capability is marked either <em>Implemented</em>, <em>Partially met</em>, or <em>Not met</em> against the project's own documented acceptance thresholds (<code>docs/01-requirements.md</code> §7) — including the two criteria the system currently fails, stated plainly rather than rounded up to "done."
+    </div>
+  </div>
+
+  <section class="section">
+    <p class="section-num">Section 1</p>
+    <h2 class="section-title">System Architecture</h2>
+    <p>LexRAG ingests PDF contracts and case-law documents, chunks and embeds them, and fans the write out in parallel to three stores: MongoDB (document metadata and provenance), Qdrant (dense vector search), and Elasticsearch (BM25 keyword search). A query runs dense and keyword retrieval in parallel, fuses the results with Reciprocal Rank Fusion, reranks the fused candidates with a cross-encoder, then generates a citation-grounded answer — or refuses, if the retrieved evidence doesn't support one.</p>
+    <p>Retrieval and generation quality are measured against a 30-case golden dataset and enforced as a CI quality gate (FR-12), not tuned by eyeballing outputs.</p>
+
+    <h3>Pipeline Overview</h3>
+    <div class="flow-block tint-blue">
+      <div class="flow-block-head"><strong>Ingestion</strong><span>ingestion/</span></div>
+      <ul>
+        <li>PDF loading, configurable chunking, full provenance metadata (document, section, page, chunk index)</li>
+        <li>Fan-out write to MongoDB + Qdrant + Elasticsearch; a document isn't marked <code>status: ready</code> until every write is validated</li>
+        <li>Duplicate detection via SHA-256 content hash — a byte-identical re-upload is skipped, not re-ingested</li>
+      </ul>
+    </div>
+    <p class="flow-arrow-down">▼</p>
+    <div class="flow-block tint-gray">
+      <div class="flow-block-head"><strong>Hybrid Retrieval</strong><span>retrieval/</span></div>
+      <ul>
+        <li>Parallel dense vector (Qdrant) + BM25 (Elasticsearch) search</li>
+        <li>Merged via Reciprocal Rank Fusion (<code>retrieval/fusion/</code>)</li>
+        <li>Optional <code>document_ids</code> filter scopes retrieval to specific documents via native store filters</li>
+      </ul>
+    </div>
+    <p class="flow-arrow-down">▼</p>
+    <div class="flow-block tint-purple">
+      <div class="flow-block-head"><strong>Reranking</strong><span>retrieval/reranker/</span></div>
+      <ul>
+        <li>Cross-encoder (<code>bge-reranker-v2-m3</code>) reranks fused candidates</li>
+        <li><code>RERANK_INPUT_TOP_K</code> caps candidates entering the reranker — the dominant latency cost</li>
+      </ul>
+    </div>
+    <p class="flow-arrow-down">▼</p>
+    <div class="flow-block tint-green">
+      <div class="flow-block-head"><strong>Generation</strong><span>generation/</span></div>
+      <ul>
+        <li>Citation-grounded prompting — cites only retrieved passages</li>
+        <li>Explicit refusal when evidence is insufficient or the question needs unsupported synthesis</li>
+      </ul>
+    </div>
+    <p class="flow-arrow-down">▼</p>
+    <div class="flow-block tint-orange">
+      <div class="flow-block-head"><strong>Evaluation</strong><span>evaluation/</span></div>
+      <ul>
+        <li>Golden-dataset harness reports recall@K, precision@K, faithfulness, refusal accuracy, per-stage latency</li>
+        <li>CI gate (FR-12) fails the build if thresholds regress</li>
+      </ul>
+    </div>
+
+    <h3>Architecture Diagram</h3>
+    <figure class="diagram-tall">
+      <img src="assets/LexRAG.png" alt="LexRAG system architecture diagram">
+      <figcaption style="font-size:11.6px;color:var(--muted);font-style:italic;margin-top:6px;">Fig. 1 — Ingestion pipeline, hybrid retrieval query pipeline, and evaluation pipeline gating CI. Editable source: <code>docs/architecture.mmd</code>.</figcaption>
+    </figure>
+  </section>
+
+  <section class="section">
+    <p class="section-num">Section 2</p>
+    <h2 class="section-title">Component Responsibilities &amp; Acceptance Status</h2>
+    <p>Status is measured against the project's own documented thresholds (<code>docs/01-requirements.md</code> §7), not a general impression of completeness.</p>
+    <p style="font-size:12px;"><span class="status-pill done">MET</span> clears the documented threshold &nbsp; <span class="status-pill partial">PARTIAL</span> improved but not yet met &nbsp; <span class="status-pill not-built">NOT MET</span> below threshold</p>
+    <table>
+      <thead><tr><th>Capability</th><th>Owns</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>PDF ingestion + chunking + provenance</td><td><code>ingestion/loaders/</code>, <code>ingestion/chunking/</code></td><td><span class="status-pill done">MET</span></td></tr>
+        <tr><td>Dual-write consistency (Mongo/Qdrant/ES)</td><td><code>ingestion/pipeline.py</code> — not <code>status: ready</code> until every write is validated</td><td><span class="status-pill done">MET</span></td></tr>
+        <tr><td>Duplicate detection (SHA-256)</td><td><code>ingestion/repository.py</code></td><td><span class="status-pill done">MET</span></td></tr>
+        <tr><td>Hybrid retrieval (dense + BM25 + RRF)</td><td><code>retrieval/hybrid.py</code>, <code>retrieval/fusion/</code></td><td><span class="status-pill done">MET</span> — Recall@10 = 1.00 (≥ 0.85), Precision@5 = 0.88 (≥ 0.70)</td></tr>
+        <tr><td>Cross-encoder reranking</td><td><code>retrieval/reranker/</code> — <code>bge-reranker-v2-m3</code></td><td><span class="status-pill done">MET</span></td></tr>
+        <tr><td>Citation-grounded generation</td><td><code>generation/citations.py</code>, <code>generation/generator.py</code></td><td><span class="status-pill done">MET</span> — Faithfulness = 0.98 (≥ 0.90)</td></tr>
+        <tr><td>Negative-case refusal (100% target)</td><td><code>generation/prompts.py</code> — <code>LEGAL_RAG_V2</code></td><td><span class="status-pill not-built">NOT MET</span> — 2 of 30 false acceptances remain</td></tr>
+        <tr><td>P95 query latency ≤ 6s (NFR-1)</td><td>Reranker is the dominant cost, CPU-bound</td><td><span class="status-pill not-built">NOT MET</span> — avg 26.3s, ~9x over budget</td></tr>
+        <tr><td>REST API (upload/query/documents)</td><td><code>api/routes/</code></td><td><span class="status-pill done">MET</span></td></tr>
+        <tr><td>Golden-dataset evaluation harness</td><td><code>evaluation/</code> — RAGAS + DeepEval</td><td><span class="status-pill done">MET</span></td></tr>
+        <tr><td>CI evaluation quality gate (FR-12)</td><td><code>.github/workflows/ci.yml</code> — <code>evaluation-gate</code> job</td><td><span class="status-pill partial">PARTIAL</span> — real and wired, but manual-trigger + self-hosted only, not automatic on every push</td></tr>
+        <tr><td>Lint/type/test CI (<code>quality</code> job)</td><td>Ruff, mypy, pytest — every push/PR</td><td><span class="status-pill done">MET</span></td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout warn">
+      <strong>The <code>confidence</code> field is not an answer-correctness score.</strong> <code>domain.generation.GenerationResult.confidence</code> is the cross-encoder's relevance score for the single highest-ranked retrieved chunk — the same score refusal (FR-10) gates on — not a calibrated measure of whether the generated answer is correct. A follow-up measurement (<code>scripts/confidence_correlation.py</code>) found Pearson r ≈ 0 between <code>confidence</code> and answer correctness/faithfulness across the golden dataset, including one answer that scored 0.92 while being completely unfaithful. This is documented, current behavior — treat <code>confidence</code> as "how relevant was the best single piece of evidence," and rely on the <code>citations</code> list to judge whether an answer is trustworthy.
+    </div>
+
+    <h3>Module Ownership Boundaries</h3>
+    <div class="col-2">
+      <ul>
+        <li><code>api/</code> — HTTP concerns only; parses requests, calls into ingestion/retrieval/generation, shapes responses</li>
+        <li><code>ingestion/</code> — PDF loading, chunking, the fan-out pipeline to all three stores</li>
+        <li><code>retrieval/</code> — vector store, keyword store, RRF fusion, reranker, each behind an interface</li>
+      </ul>
+      <ul>
+        <li><code>generation/</code> — citation-grounded prompting, provider-agnostic LLM interface, refusal logic</li>
+        <li><code>evaluation/</code> — golden-dataset runner + RAGAS/DeepEval metric wrappers</li>
+        <li><code>configs/</code> — all settings flow through here; nothing else reads <code>os.environ</code> directly</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="section">
+    <p class="section-num">Section 3</p>
+    <h2 class="section-title">Data Flow</h2>
+    <p><strong>Ingestion</strong></p>
+    <ol>
+      <li><code>POST /upload</code> receives a PDF; its content hash is checked against existing documents — a byte-identical duplicate is skipped and the existing document returned.</li>
+      <li>The PDF is loaded, chunked with provenance metadata (document, section, page, chunk index), and embedded (<code>bge-m3</code>).</li>
+      <li>Chunks fan out to MongoDB (metadata), Qdrant (dense vectors), and Elasticsearch (BM25 index) in parallel.</li>
+      <li>The document is marked <code>status: ready</code> only once every store write is independently validated — a partial failure leaves it incomplete rather than falsely queryable.</li>
+    </ol>
+    <p><strong>Query</strong></p>
+    <ol>
+      <li><code>POST /query</code> accepts a question and an optional <code>document_ids</code> scope.</li>
+      <li>Dense (Qdrant) and BM25 (Elasticsearch) retrieval run in parallel against the (optionally scoped) corpus.</li>
+      <li>Results merge via Reciprocal Rank Fusion, then the fused candidates (capped at <code>RERANK_INPUT_TOP_K</code>) are reranked by the cross-encoder.</li>
+      <li>The generator produces a citation-grounded answer from the top reranked passages, or refuses if they don't support one.</li>
+      <li>The response returns answer, citations, sources, and the reranker-relevance <code>confidence</code> field (see Section 2's callout on what it does and doesn't mean).</li>
+    </ol>
+
+    <h3>Request/Response Shape</h3>
+    <p class="mono" style="display:block;padding:12px 16px;">POST /query → Hybrid Retrieval (Qdrant + Elasticsearch, parallel) → RRF Fusion → Cross-Encoder Rerank → Generation (cite or refuse) → JSON Response</p>
+  </section>
+
+  <section class="section">
+    <p class="section-num">Section 4</p>
+    <h2 class="section-title">Technology Choices</h2>
+    <table>
+      <thead><tr><th>Layer</th><th>Choice</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>API</td><td>FastAPI</td><td>Async-first; I/O-bound store queries and LLM calls use async clients directly</td></tr>
+        <tr><td>Metadata / document store</td><td>MongoDB</td><td>Flexible schema for document metadata and provenance, independent of vector/keyword indexes</td></tr>
+        <tr><td>Vector store</td><td>Qdrant</td><td>Dense semantic retrieval; swappable behind a DI interface (Pinecone is a documented stretch goal)</td></tr>
+        <tr><td>Keyword index</td><td>Elasticsearch</td><td>BM25 keyword search — catches exact-term matches hybrid dense search alone can miss</td></tr>
+        <tr><td>Fusion</td><td>Reciprocal Rank Fusion</td><td>Combines dense + keyword rankings without needing score normalization across incompatible scales</td></tr>
+        <tr><td>Reranker</td><td>bge-reranker-v2-m3 (cross-encoder)</td><td>Refines fused candidates before generation; the dominant latency cost, so capped via <code>RERANK_INPUT_TOP_K</code></td></tr>
+        <tr><td>Generation</td><td>OpenAI-compatible, provider-agnostic interface</td><td>Citation-grounded prompting isn't tied to one vendor's API shape</td></tr>
+        <tr><td>Evaluation</td><td>RAGAS + DeepEval</td><td>RAGAS supplies LLM-as-judge metrics; DeepEval wraps them in threshold/pass-fail assertions for CI</td></tr>
+        <tr><td>Package/env</td><td>uv</td><td>Fast, lockfile-based dependency management; <code>uv.lock</code> mismatch fails CI before any other check runs</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Why an ONNX reranker backend was rejected</h3>
+    <p>An ONNX Runtime backend for the same cross-encoder model was benchmarked as an alternative to the default PyTorch backend, specifically to address reranker latency (the pipeline's dominant cost). Measured result: 1.02x speedup — not a real improvement — so the added dependency and maintenance surface weren't adopted. Full write-up and numbers: <code>docs/adr/001-reranker-onnx-backend.md</code>. The latency win that did land came from a different lever: capping <code>RERANK_INPUT_TOP_K</code> (20 → 12), validated against the golden set with zero measured recall cost.</p>
+
+    <h3>Why refusal is a generation-stage concern, not just retrieval</h3>
+    <p>The two remaining negative-case false acceptances are not retrieval failures — both are cases where retrieval correctly returns real, topically-relevant evidence that doesn't actually contain the specific fact being asked about, and generation still answers instead of refusing. This is why the Day 6 fix (<code>LEGAL_RAG_V2</code>) targeted the generation prompt, not the retrieval or reranking stages.</p>
+  </section>
+
+  <section class="section">
+    <p class="section-num">Section 5</p>
+    <h2 class="section-title">Error Handling &amp; Consistency</h2>
+    <h3>Dual-Write Consistency</h3>
+    <p>Ingestion writes to three independent stores (MongoDB, Qdrant, Elasticsearch) with no distributed transaction across them. A document is not marked <code>status: ready</code> in MongoDB until every store write is independently validated — so a partial failure (e.g. the Elasticsearch write fails after Qdrant succeeds) leaves the document in a non-ready state instead of silently becoming queryable with incomplete indexing.</p>
+
+    <h3>Refusal as an Explicit Error Path</h3>
+    <p>Generation is instructed to answer only from retrieved passages and to refuse explicitly — not answer with lower confidence — when the evidence is insufficient or the question requires synthesis the retrieved evidence doesn't support. Refusal is a first-class response, not an exception; it's measured in the same evaluation harness as recall, precision, and faithfulness (see Section 7 of the Case Study).</p>
+
+    <div class="callout">
+      <strong>Design principle:</strong> a document is never queryable in a partially-indexed state, and an answer is never presented without the evidence that supports it — both are enforced structurally, not by convention.
+    </div>
+  </section>
+
+  <section class="section">
+    <p class="section-num">Section 6</p>
+    <h2 class="section-title">Testing &amp; CI</h2>
+    <p>Unit tests never hit a real MongoDB/Qdrant/Elasticsearch/LLM — the client is mocked or faked at the interface boundary. Real-service tests live in <code>tests/integration/</code> under the <code>integration</code> pytest marker and skip themselves when the dependency is unreachable. <code>pytest</code> with no flags must pass with zero external services running and finish in under 60 seconds (NFR-5).</p>
+    <table>
+      <thead><tr><th>CI Job</th><th>Trigger</th><th>What it runs</th></tr></thead>
+      <tbody>
+        <tr><td><code>quality</code></td><td>Every push / PR</td><td><code>uv sync --locked</code>, <code>ruff check</code>, <code>ruff format --check</code>, <code>mypy</code>, <code>pytest</code></td></tr>
+        <tr><td><code>evaluation-gate</code> (FR-12)</td><td>Manual (<code>workflow_dispatch</code>), self-hosted runner</td><td><code>make evaluate</code> + <code>make evaluate-gate</code> against the pre-seeded golden corpus</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12.3px;">The evaluation gate isn't automatic on every push because the golden corpus (<code>data/raw/sample_contracts/</code>) is real, licensed contract text, deliberately gitignored — a GitHub-hosted runner has no way to reproduce it from a checkout alone. The job itself is real, tested YAML, demonstrated both failing (against the pre-fix baseline and against deliberately emptied vector/keyword stores) and passing (against the real, correctly-configured system) — not aspirational configuration.</p>
+  </section>
+
+  <section class="section">
+    <p class="section-num">Section 7</p>
+    <h2 class="section-title">Known Limitations</h2>
+    <p>Honest, measured gaps against <code>docs/01-requirements.md</code> §7's acceptance bar — not resolved this sprint, tracked here rather than glossed over.</p>
+    <table>
+      <thead><tr><th>Limitation</th><th>Detail</th></tr></thead>
+      <tbody>
+        <tr><td>100% negative-case refusal not met</td><td>2 of 30 golden cases are still answered when they should be refused — both generation-stage judgment failures on topically-real-but-non-answering evidence</td></tr>
+        <tr><td>P95 query latency not met</td><td>Cut 53% (56.4s → 26.3s avg), but the CPU-only cross-encoder reranker remains ~9x over the 6s budget; no GPU/DirectML path on the dev machine, and ONNX was measured and rejected</td></tr>
+        <tr><td>Evaluation gate not automated on GitHub-hosted runners</td><td>Real, correctly wired, but only runs on a self-hosted runner with the (deliberately gitignored, licensed) corpus pre-seeded, triggered manually</td></tr>
+        <tr><td>Retrieval robustness to config mistakes untested at scale</td><td>Only an artificially emptied vector/keyword store cleanly failed the CI gate's checks on this 8-document corpus; a larger, more heterogeneous corpus would be needed to demonstrate a naturally occurring regression</td></tr>
+        <tr><td>Single-run measurements throughout</td><td>RAGAS/DeepEval LLM-judge scores aren't perfectly deterministic run-to-run — a repeat run of an identical config previously shifted refusal accuracy from 93.33% to 100%</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div class="resources" id="resources">
+    <p class="resources-title">Resources</p>
+    <p class="resources-sub">Want to verify or explore this further? Here you go.</p>
+    <ul class="resource-list">
+      <li>
+        <span class="r-label"><strong>GitHub repository</strong><small>Full source, commit history, CI configuration</small></span>
+        <a href="https://github.com/Terrytd0/LexRag" target="_blank" rel="noopener">github.com/Terrytd0/LexRag</a>
+      </li>
+      <li>
+        <span class="r-label"><strong>README</strong><small>Setup, features, benchmark numbers, known limitations</small></span>
+        <a href="https://github.com/Terrytd0/LexRag/blob/main/README.md" target="_blank" rel="noopener">README.md</a>
+      </li>
+      <li>
+        <span class="r-label"><strong>Evaluation notes</strong><small>Full Day 6 methodology, every intermediate measurement</small></span>
+        <a href="https://github.com/Terrytd0/LexRag/blob/main/docs/experiments/evaluation_notes_day6.md" target="_blank" rel="noopener">docs/experiments/evaluation_notes_day6.md</a>
+      </li>
+      <li>
+        <span class="r-label"><strong>Requirements</strong><small>Full functional/non-functional requirements &amp; §7 acceptance criteria</small></span>
+        <a href="https://github.com/Terrytd0/LexRag/blob/main/docs/01-requirements.md" target="_blank" rel="noopener">docs/01-requirements.md</a>
+      </li>
+      <li>
+        <span class="r-label"><strong>Case Study</strong><small>The companion document to this architecture reference</small></span>
+        <a href="case-study.html">case-study.pdf</a>
+      </li>
+      <li>
+        <span class="r-label"><strong>Full docs folder</strong><small>Architecture ADR, requirements, experiment notes</small></span>
+        <a href="https://github.com/Terrytd0/LexRag/tree/main/docs" target="_blank" rel="noopener">docs/</a>
+      </li>
+    </ul>
+  </div>
+
+  <div class="doc-footer">
+    <span>LexRAG</span>
+    <span>Technical Architecture · Self-directed portfolio project</span>
+  </div>
+
+</div>
+</body>
+</html>

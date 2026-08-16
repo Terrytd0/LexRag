@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LexRAG — Case Study</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="doc">
+
+  <div class="cover-block">
+    <p class="cover-kicker">Case Study</p>
+    <h1 class="cover-title">LexRAG</h1>
+    <p class="cover-subtitle">A legal contract &amp; case-law RAG platform that cites only what it retrieved — and refuses to answer when the evidence isn't there.</p>
+
+    <div class="cover-disclosure">
+      <strong>Self-directed portfolio project.</strong> Not a production deployment for a real firm. Built to practice a genuinely hard RAG problem: retrieval and generation quality measured against a golden dataset and enforced as a CI quality gate, not tuned by eyeballing outputs. Every number below is a real, measured result from the evaluation harness — including the ones that don't yet clear the target bar. See <a href="#resources">Resources</a> for the full evaluation methodology.
+    </div>
+
+    <div class="badge-row">
+      <span class="badge">FastAPI</span>
+      <span class="badge">Qdrant</span>
+      <span class="badge">Elasticsearch</span>
+      <span class="badge alt">RAGAS</span>
+      <span class="badge alt2">CI Quality Gate</span>
+    </div>
+  </div>
+
+  <section class="section">
+    <p class="section-num">1 · The Problem</p>
+    <h2 class="section-title">Confident answers without evidence are worse than no answer</h2>
+    <p>Paralegals burn hours per matter manually searching thousands of pages of contracts and prior filings for relevant clauses and precedent. Keyword search misses paraphrased queries; a generic LLM chat interface answers confidently without evidence, which is unusable — and risky — for legal work.</p>
+    <ul>
+      <li>Finding relevant clauses across large PDF corpora, including paraphrased queries keyword search misses</li>
+      <li>Citing only passages actually retrieved, not the model's own recollection</li>
+      <li>Refusing to answer — explicitly — when the corpus doesn't contain sufficient evidence</li>
+      <li>Proving retrieval and generation quality with numbers, not eyeballed outputs</li>
+      <li>Keeping query latency usable, not a multi-minute wait per question</li>
+    </ul>
+  </section>
+
+  <section class="section">
+    <p class="section-num">2 · Objectives</p>
+    <h2 class="section-title">Measurable quality, enforced automatically</h2>
+    <div class="col-2">
+      <ul>
+        <li><strong>Hybrid retrieval</strong> — dense vector + BM25 keyword search, merged via Reciprocal Rank Fusion</li>
+        <li><strong>Cross-encoder reranking</strong> of fused candidates before generation</li>
+        <li><strong>Citation-grounded generation</strong> that cites only retrieved passages</li>
+      </ul>
+      <ul>
+        <li><strong>Explicit refusal</strong> when evidence is insufficient, not a confident guess</li>
+        <li><strong>A CI quality gate</strong> that fails the build if measured quality regresses</li>
+      </ul>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-tile">
+        <p class="stat-number">30</p>
+        <p class="stat-caption">golden Q/A cases, 22 positive + 8 adversarial</p>
+      </div>
+      <div class="stat-tile">
+        <p class="stat-number">7</p>
+        <p class="stat-caption">real SEC-filed contracts in the golden corpus</p>
+      </div>
+      <div class="stat-tile">
+        <p class="stat-number">4</p>
+        <p class="stat-caption">metrics gated in CI: recall, precision, faithfulness, refusal</p>
+      </div>
+      <div class="stat-tile">
+        <p class="stat-number">6</p>
+        <p class="stat-caption">sprint days, all shipped — see Roadmap</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <p class="section-num">3 · Solution</p>
+    <h2 class="section-title">Ingest, fuse, rerank, cite — or refuse</h2>
+    <p>LexRAG ingests PDF contracts and case-law documents, indexes them for hybrid retrieval, and generates answers that cite only retrieved passages — refusing to answer when the corpus doesn't contain sufficient evidence.</p>
+    <div class="pipeline">
+      <div class="pipeline-stage tint-blue"><p class="stage-name">Ingest</p><p class="stage-sub">chunk + embed</p></div>
+      <span class="pipeline-arrow">→</span>
+      <div class="pipeline-stage tint-gray"><p class="stage-name">Hybrid Retrieval</p><p class="stage-sub">dense + BM25, RRF</p></div>
+      <span class="pipeline-arrow">→</span>
+      <div class="pipeline-stage tint-purple"><p class="stage-name">Rerank</p><p class="stage-sub">cross-encoder</p></div>
+      <span class="pipeline-arrow">→</span>
+      <div class="pipeline-stage tint-green"><p class="stage-name">Generate</p><p class="stage-sub">cite or refuse</p></div>
+      <span class="pipeline-arrow">→</span>
+      <div class="pipeline-stage tint-orange"><p class="stage-name">Evaluate</p><p class="stage-sub">golden dataset</p></div>
+    </div>
+    <p class="pipeline-caption">Retrieval and generation quality are measured against a golden dataset and enforced as a CI quality gate — not tuned by eyeballing outputs.</p>
+  </section>
+
+  <section class="section">
+    <p class="section-num">4 · Technologies Used</p>
+    <h2 class="section-title">Stack</h2>
+    <div class="tech-grid">
+      <div class="tech-item"><span class="tech-dot"></span><div><strong>FastAPI</strong><span>Async API — upload, query, document management</span></div></div>
+      <div class="tech-item"><span class="tech-dot"></span><div><strong>MongoDB</strong><span>Document metadata &amp; provenance store</span></div></div>
+      <div class="tech-item"><span class="tech-dot"></span><div><strong>Qdrant</strong><span>Dense vector search</span></div></div>
+      <div class="tech-item"><span class="tech-dot"></span><div><strong>Elasticsearch</strong><span>BM25 keyword search</span></div></div>
+      <div class="tech-item"><span class="tech-dot"></span><div><strong>bge-m3 / bge-reranker-v2-m3</strong><span>Embeddings + cross-encoder reranker</span></div></div>
+      <div class="tech-item"><span class="tech-dot"></span><div><strong>RAGAS + DeepEval</strong><span>Golden-dataset evaluation harness</span></div></div>
+      <div class="tech-item"><span class="tech-dot"></span><div><strong>Docker Compose</strong><span>Full local stack: API + Mongo + Qdrant + ES</span></div></div>
+      <div class="tech-item"><span class="tech-dot"></span><div><strong>GitHub Actions</strong><span>Lint/type/test CI + evaluation quality gate</span></div></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <p class="section-num">5 · Challenges Solved</p>
+    <h2 class="section-title">Measured, not assumed</h2>
+    <div class="card-grid">
+      <div class="card">
+        <h4>Reranker latency was the real bottleneck</h4>
+        <p>Capping pre-rerank candidates (<code>RERANK_INPUT_TOP_K</code> 20 → 12, validated against every positive case's expected document staying in the reranked top 8) cut average reranker latency from 53.5s to 23.4s — more than half — without a measured recall cost.</p>
+      </div>
+      <div class="card">
+        <h4>ONNX Runtime was measured and rejected</h4>
+        <p>An ONNX Runtime backend for the same reranker model was benchmarked, not assumed: 1.02x speedup — not a real win — so the added dependency wasn't worth it. The CPU-bound reranker remains ~9x over the P95 latency budget with no GPU/DirectML path on the development machine.</p>
+      </div>
+      <div class="card">
+        <h4>The <code>confidence</code> field doesn't mean what it looks like</h4>
+        <p>A follow-up analysis measured the actual correlation between the API's <code>confidence</code> field and answer correctness: Pearson r ≈ 0. It reflects the reranker's relevance score for the single best-matching chunk, not a calibrated answer-confidence score — one answer scored 0.92 while being completely unfaithful. Documented plainly rather than left to be misread.</p>
+      </div>
+      <div class="card">
+        <h4>Refusal is improved, not solved</h4>
+        <p>A targeted generation-prompt fix (<code>LEGAL_RAG_V2</code>) closed one of three measured false acceptances, but two adversarial cases — both topically-relevant-but-non-answering evidence — still survive. 100% refusal on negative cases remains the one currently-failing CI gate criterion, tracked openly rather than declared done.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <p class="section-num">6 · Architecture</p>
+    <h2 class="section-title">Three stores, one fan-out write, one query path</h2>
+    <p>Ingestion fans out to MongoDB (metadata/provenance), Qdrant (dense vectors), and Elasticsearch (BM25 index) in parallel; a document is only marked <code>status: ready</code> once every store write is validated, so a partial ingestion failure can't silently leave a queryable-but-incomplete document. The query path runs dense and keyword search in parallel, fuses results with Reciprocal Rank Fusion, reranks the fused candidates with a cross-encoder, then generates a cited answer or refuses.</p>
+    <figure class="diagram-tall">
+      <img src="assets/LexRAG.png" alt="LexRAG system architecture diagram">
+      <figcaption style="font-size:11.8px;color:var(--muted);font-style:italic;margin-top:6px;">System architecture: PDF ingestion pipeline feeding MongoDB/Qdrant/Elasticsearch, a hybrid retrieval query pipeline with RRF fusion and cross-encoder reranking, and an evaluation pipeline gating CI.</figcaption>
+    </figure>
+  </section>
+
+  <section class="section">
+    <p class="section-num">7 · Evaluation Results</p>
+    <h2 class="section-title">Day 5 baseline vs. Day 6 final — measured, not asserted</h2>
+    <p>Same 7-document real-contract corpus, same 30 golden cases, one model swap (<code>gpt-5.6-luna</code> → <code>gpt-4.1-mini</code>, the project's actual configured default) plus two targeted changes: a lower rerank candidate cap and a refusal-prompt fix.</p>
+    <table>
+      <thead><tr><th>Metric</th><th>Day 5</th><th>Day 6</th><th>Target</th></tr></thead>
+      <tbody>
+        <tr><td>Recall@10 (hybrid)</td><td>1.00</td><td>1.00</td><td>✅ ≥ 0.85</td></tr>
+        <tr><td>Precision@5 (hybrid)</td><td>0.88</td><td>0.88</td><td>✅ ≥ 0.70</td></tr>
+        <tr><td>Faithfulness</td><td>0.95</td><td>0.98</td><td>✅ ≥ 0.90</td></tr>
+        <tr><td>Refusal accuracy</td><td>93.33%</td><td>90.00%</td><td>— (see below)</td></tr>
+        <tr><td>Avg reranker latency</td><td>53.5s</td><td>23.4s</td><td>—</td></tr>
+        <tr><td>Avg end-to-end latency</td><td>56.4s</td><td>26.3s (-53%)</td><td>❌ ≤ 6s (P95)</td></tr>
+        <tr><td>Negative-case false acceptances</td><td>2</td><td>2</td><td>❌ target is 0</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;font-style:italic;color:var(--muted);">Single-run measurements — RAGAS/DeepEval LLM-judge scores aren't perfectly deterministic run-to-run; treat every number here as directional, per the project's own documented caveat.</p>
+  </section>
+
+  <section class="section">
+    <p class="section-num">8 · Testing &amp; CI</p>
+    <h2 class="section-title">Quality gate on every push, evaluation gate on demand</h2>
+    <p><code>make check</code> — Ruff lint, Ruff format check, mypy, and pytest — runs on every push and PR via GitHub Actions, identical to what CI runs. A separate <code>evaluation-gate</code> job checks the golden-dataset harness's output against documented thresholds (recall@10 ≥ 0.85, precision@5 ≥ 0.70, faithfulness ≥ 0.90, zero false acceptances) and exits non-zero on failure — demonstrated on the record both failing and passing against real and deliberately degraded configurations.</p>
+    <table>
+      <thead><tr><th>Check</th><th>What it verifies</th></tr></thead>
+      <tbody>
+        <tr><td><code>ruff check</code> / <code>format</code></td><td>Lint and formatting, 100-char line length</td></tr>
+        <tr><td><code>mypy</code></td><td><code>disallow_untyped_defs</code> — every function signature is typed</td></tr>
+        <tr><td><code>pytest</code></td><td>Unit suite, zero external services, under 60s (NFR-5)</td></tr>
+        <tr><td><code>evaluation-gate</code> (FR-12)</td><td>Recall/precision/faithfulness/refusal against the golden dataset, self-hosted runner</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <p class="section-num">9 · Results</p>
+    <h2 class="section-title">What clears the bar, and what's still open</h2>
+    <div class="stat-row">
+      <div class="stat-tile">
+        <p class="stat-number">1.00</p>
+        <p class="stat-caption">Recall@10, hybrid retrieval (target ≥ 0.85)</p>
+        <span class="stat-flag verified">VERIFIED</span>
+      </div>
+      <div class="stat-tile">
+        <p class="stat-number">0.98</p>
+        <p class="stat-caption">Faithfulness (target ≥ 0.90)</p>
+        <span class="stat-flag verified">VERIFIED</span>
+      </div>
+      <div class="stat-tile">
+        <p class="stat-number">-53%</p>
+        <p class="stat-caption">end-to-end query latency, Day 5 → Day 6</p>
+        <span class="stat-flag verified">VERIFIED</span>
+      </div>
+      <div class="stat-tile">
+        <p class="stat-number">2 / 30</p>
+        <p class="stat-caption">negative cases still incorrectly answered</p>
+        <span class="stat-flag target">OPEN GAP</span>
+      </div>
+    </div>
+    <p style="font-size:12.6px;font-style:italic;">This is a portfolio build measured against its own golden dataset, not production usage. The CI gate's one currently-failing criterion (100% negative-case refusal) is stated openly — see <a href="technical-architecture.html">Technical Architecture</a> Section 7 for the full known-limitations list.</p>
+  </section>
+
+  <section class="section">
+    <p class="section-num">10 · Key Takeaways</p>
+    <h2 class="section-title">What this build was really practicing</h2>
+    <div class="takeaway-grid">
+      <div class="takeaway"><span class="num">1</span><p>A retrieval-relevance score and an answer-correctness score are not the same thing — conflating them is an easy, dangerous mistake in a RAG API's response contract.</p></div>
+      <div class="takeaway"><span class="num">2</span><p>Enforcing quality thresholds in CI, not eyeballing outputs, is what turns "the demo looked good" into a real regression gate.</p></div>
+      <div class="takeaway"><span class="num">3</span><p>Benchmarking a proposed optimization (ONNX) before adopting it caught a 1.02x non-improvement that would otherwise have added a dependency for nothing.</p></div>
+      <div class="takeaway"><span class="num">4</span><p>Refusal is a generation-stage judgment call, not just a retrieval-quality problem — the two remaining false acceptances are cases where retrieval worked correctly and generation still overreached.</p></div>
+      <div class="takeaway"><span class="num">5</span><p>Dual-write consistency across three stores needs an explicit "not ready until every write succeeds" rule — it doesn't fall out of any one store's own guarantees.</p></div>
+      <div class="takeaway"><span class="num">6</span><p>Reporting a metric as "directional, not proven" when it isn't run-to-run deterministic is more useful than a false sense of precision.</p></div>
+    </div>
+  </section>
+
+  <div class="resources" id="resources">
+    <p class="resources-title">Resources</p>
+    <p class="resources-sub">Want to verify or explore this further? Here you go.</p>
+    <ul class="resource-list">
+      <li>
+        <span class="r-label"><strong>GitHub repository</strong><small>Full source, commit history, CI configuration</small></span>
+        <a href="https://github.com/Terrytd0/LexRag" target="_blank" rel="noopener">github.com/Terrytd0/LexRag</a>
+      </li>
+      <li>
+        <span class="r-label"><strong>README</strong><small>Setup, features, benchmark numbers, known limitations</small></span>
+        <a href="https://github.com/Terrytd0/LexRag/blob/main/README.md" target="_blank" rel="noopener">README.md</a>
+      </li>
+      <li>
+        <span class="r-label"><strong>Evaluation notes</strong><small>Full Day 6 methodology, every intermediate measurement</small></span>
+        <a href="https://github.com/Terrytd0/LexRag/blob/main/docs/experiments/evaluation_notes_day6.md" target="_blank" rel="noopener">docs/experiments/evaluation_notes_day6.md</a>
+      </li>
+      <li>
+        <span class="r-label"><strong>ADR-001</strong><small>The ONNX reranker backend decision, benchmarked and rejected</small></span>
+        <a href="https://github.com/Terrytd0/LexRag/blob/main/docs/adr/001-reranker-onnx-backend.md" target="_blank" rel="noopener">docs/adr/001-reranker-onnx-backend.md</a>
+      </li>
+      <li>
+        <span class="r-label"><strong>Technical Architecture</strong><small>The companion document to this case study</small></span>
+        <a href="technical-architecture.html">technical-architecture.pdf</a>
+      </li>
+      <li>
+        <span class="r-label"><strong>Full docs folder</strong><small>Requirements, architecture ADR, experiment notes</small></span>
+        <a href="https://github.com/Terrytd0/LexRag/tree/main/docs" target="_blank" rel="noopener">docs/</a>
+      </li>
+    </ul>
+  </div>
+
+  <div class="doc-footer">
+    <span>LexRAG · Case Study</span>
+    <span>Self-directed portfolio project</span>
+  </div>
+
+</div>
+</body>
+</html>
